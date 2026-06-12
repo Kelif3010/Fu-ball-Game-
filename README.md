@@ -1,8 +1,19 @@
-# WM 2026 Liga – Vercel + football-data.org
+# WM 2026 Liga
 
-Diese Version nutzt keine Claude/Anthropic API mehr. Die React-App ruft `/api/scores` auf, und diese Vercel Function lädt die WM-2026-Gruppenspiele über football-data.org.
+Private WM-2026-Liga als Vite/React-App auf Vercel.
 
-Für Aufstellungen nutzt `/api/match` zuerst football-data.org. Wenn dort keine Startelf/Bank vorhanden ist und `API_FOOTBALL_KEY` gesetzt wurde, versucht die App automatisch API-Football / API-Sports als Fallback.
+## Features
+
+- mobile Rangliste
+- Live-Spiele
+- Live-Tabelle / „wenn es so bleibt“
+- Match-Center per Tipp auf ein Live-Spiel
+- Startelf, Bank und Events, sofern die APIs Daten liefern
+- Regeln-Reiter
+- PWA/App-Modus für iPhone über „Zum Home-Bildschirm hinzufügen“
+- Service Worker für App-Shell-Caching
+- Live-Update alle 5 Minuten, um API-Requests zu sparen
+- Match-Center-Cache für 5 Minuten
 
 ## Lokal starten
 
@@ -11,63 +22,35 @@ npm install
 npm run dev
 ```
 
-Für lokale API-Tests brauchst du eine `.env.local` mit:
+## Vercel Environment Variables
 
-```bash
-FOOTBALL_DATA_TOKEN=dein_football_data_token_hier
-API_FOOTBALL_KEY=dein_api_football_key_hier
-```
-
-## Vercel
-
-1. Projekt zu Vercel hochladen.
-2. In `Settings → Environment Variables` eintragen:
+In Vercel müssen zwei Environment Variables gesetzt sein:
 
 ```txt
-FOOTBALL_DATA_TOKEN=dein_football_data_token_hier
-API_FOOTBALL_KEY=dein_api_football_key_hier
+FOOTBALL_DATA_TOKEN
+API_FOOTBALL_KEY
 ```
 
-3. Production Deploy ausführen oder bei GitHub-Integration automatisch deployen lassen:
-
-```bash
-vercel --prod
-```
+Die Werte kommen aus football-data.org und API-Football/API-Sports. Die Keys niemals in GitHub speichern.
 
 ## Datenquellen
 
-### Ergebnisse, Live-Status und Spielplan
+`/api/scores` lädt Ergebnisse, Live-Status und Spielplan über football-data.org.
 
-Endpoint:
+`/api/match` lädt Match-Details, Aufstellungen und Events. Zuerst wird football-data.org geprüft. Wenn dort keine Aufstellung vorhanden ist, wird API-Football/API-Sports genutzt.
 
-```txt
-https://api.football-data.org/v4/competitions/WC/matches?season=2026&stage=GROUP_STAGE
-```
+API-Football und football-data.org haben unterschiedliche Match-IDs. Deshalb wird das passende Spiel über Datum und Teamnamen gematcht.
 
-Die Vercel Function wandelt die football-data.org-Antwort in das Format deiner bestehenden App um:
+## PWA / iPhone
 
-```json
-{
-  "live": [{ "homeTeam": "Canada", "awayTeam": "Bosnia and Herzegovina", "homeGoals": 0, "awayGoals": 1 }],
-  "played": [{ "homeTeam": "Spain", "awayTeam": "Croatia", "homeGoals": 2, "awayGoals": 1 }],
-  "upcoming": [{ "homeTeam": "Germany", "awayTeam": "Mexico", "date": "2026-06-15", "time": "21:00", "group": "A" }]
-}
-```
-
-### Aufstellungen
-
-Die App ruft beim Antippen eines Live-Spiels diesen internen Endpoint auf:
+Die App enthält Manifest, Icon und Service Worker. Auf dem iPhone kann sie über Safari installiert werden:
 
 ```txt
-/api/match?id=<football-data-match-id>
+Teilen → Zum Home-Bildschirm hinzufügen
 ```
 
-Diese Route:
+Der Service Worker cached nur die App-Oberfläche. API-Daten werden nicht dauerhaft im Service Worker gecached, damit Live-Stände nicht falsch hängen bleiben.
 
-1. lädt Match-Details von football-data.org,
-2. prüft, ob `lineup` oder `bench` vorhanden sind,
-3. nutzt bei leeren Daten automatisch API-Football / API-Sports,
-4. sucht dort das passende WM-Spiel über Datum + Teamnamen,
-5. lädt Startelf und Bank über den Fixture-Lineups-Endpunkt.
+## Live-Update
 
-Wichtig: API-Football und football-data.org haben unterschiedliche Match-IDs. Deshalb wird nicht die ID direkt übernommen, sondern das Spiel über Datum und Teamnamen gematcht.
+Während Live-Spiele laufen, aktualisiert das Frontend automatisch alle 5 Minuten. `/api/scores` und `/api/match` setzen ebenfalls 5-Minuten-Cache-Header. Dadurch werden Free-Tier-Requests geschont.
