@@ -78,6 +78,26 @@ function formatDate(dateStr) {
   return new Date(`${dateStr}T12:00:00`).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+const rankLabel = index => index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `${index + 1}.`;
+const tdColor = value => value > 0 ? "#34d399" : value < 0 ? "#f87171" : "#94a3b8";
+
+function StatChip({ label, value, color }) {
+  return (
+    <div style={{
+      minWidth: 62,
+      flex: "1 1 62px",
+      background: "rgba(255,255,255,.045)",
+      border: "1px solid rgba(255,255,255,.075)",
+      borderRadius: 12,
+      padding: "8px 9px",
+      textAlign: "center"
+    }}>
+      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 900, letterSpacing: ".5px", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ marginTop: 3, color: color || "#e2e8f0", fontSize: 15, fontWeight: 900 }}>{value}</div>
+    </div>
+  );
+}
+
 export default function App() {
   const [played, setPlayed] = useState([]);
   const [upcoming, setUpcoming] = useState([]);
@@ -117,16 +137,16 @@ export default function App() {
   }, [upcoming]);
 
   return (
-    <main style={{ minHeight: "100vh", background: "linear-gradient(160deg,#05091a,#0c1525 55%,#070d1c)", color: "#e2e8f0", fontFamily: "system-ui,-apple-system,BlinkMacSystemFont,sans-serif", padding: 16 }}>
+    <main style={{ minHeight: "100vh", background: "linear-gradient(160deg,#05091a,#0c1525 55%,#070d1c)", color: "#e2e8f0", fontFamily: "system-ui,-apple-system,BlinkMacSystemFont,sans-serif", padding: 14 }}>
       <section style={{ maxWidth: 920, margin: "0 auto" }}>
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 18 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 28, color: "#fbbf24" }}>⚽ WM 2026 Liga</h1>
-            <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: 13 }}>
+        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: "clamp(23px, 7vw, 28px)", color: "#fbbf24", letterSpacing: "-.7px" }}>⚽ WM 2026 Liga</h1>
+            <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: 13, lineHeight: 1.35 }}>
               {loading ? "Lade Daten…" : updated ? `Stand: ${updated.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr · ${played.length} Ergebnisse · ${upcoming.length} kommende Spiele` : "Bereit"}
             </p>
           </div>
-          <button onClick={load} disabled={loading} style={{ border: "1px solid rgba(245,158,11,.35)", background: "rgba(245,158,11,.12)", color: "#fbbf24", borderRadius: 12, padding: "10px 14px", fontWeight: 800, cursor: loading ? "default" : "pointer" }}>
+          <button onClick={load} disabled={loading} style={{ border: "1px solid rgba(245,158,11,.35)", background: "rgba(245,158,11,.12)", color: "#fbbf24", borderRadius: 12, padding: "10px 14px", fontWeight: 800, cursor: loading ? "default" : "pointer", flexShrink: 0 }}>
             {loading ? "⏳ Lädt" : "🔄 Aktualisieren"}
           </button>
         </header>
@@ -135,27 +155,77 @@ export default function App() {
 
         <nav style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
           {[["standings", "🏆 Rangliste"], ["upcoming", "📅 Nächste Spiele"], ["played", "⚽ Ergebnisse"]].map(([id, label]) => (
-            <button key={id} onClick={() => setTab(id)} style={{ border: "1px solid rgba(255,255,255,.1)", background: tab === id ? "rgba(245,158,11,.18)" : "rgba(255,255,255,.04)", color: tab === id ? "#fbbf24" : "#cbd5e1", borderRadius: 999, padding: "9px 13px", fontWeight: 800, cursor: "pointer" }}>{label}</button>
+            <button key={id} onClick={() => setTab(id)} style={{ border: "1px solid rgba(255,255,255,.1)", background: tab === id ? "rgba(245,158,11,.18)" : "rgba(255,255,255,.04)", color: tab === id ? "#fbbf24" : "#cbd5e1", borderRadius: 999, padding: "9px 13px", fontWeight: 800, cursor: "pointer", flex: "1 1 auto" }}>{label}</button>
           ))}
         </nav>
 
         {tab === "standings" && (
-          <div style={{ border: "1px solid rgba(255,255,255,.08)", borderRadius: 18, overflow: "hidden" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "46px 1fr 70px 92px 70px 60px", gap: 8, padding: "12px 14px", background: "rgba(255,255,255,.04)", color: "#94a3b8", fontSize: 12, fontWeight: 800 }}>
-              <span>#</span><span>Spieler</span><span>PTS</span><span>S-U-N</span><span>Tore</span><span>TD</span>
-            </div>
+          <div style={{ display: "grid", gap: 10 }}>
             {standings.map((row, i) => (
-              <div key={row.person} style={{ display: "grid", gridTemplateColumns: "46px 1fr 70px 92px 70px 60px", gap: 8, padding: "13px 14px", alignItems: "center", borderTop: "1px solid rgba(255,255,255,.06)", background: i === 0 ? "rgba(245,158,11,.08)" : "transparent" }}>
-                <strong>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}</strong>
-                <div>
-                  <strong style={{ color: COLORS[row.person] }}>{row.person}</strong>
-                  <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>{row.teams.map(t => `${FLAGS[t] || ""} ${DE[t] || t}`).join(" · ")}</div>
+              <article key={row.person} style={{
+                border: `1px solid ${i === 0 ? "rgba(245,158,11,.28)" : "rgba(255,255,255,.08)"}`,
+                borderRadius: 18,
+                overflow: "hidden",
+                background: i === 0 ? "linear-gradient(135deg,rgba(245,158,11,.13),rgba(255,255,255,.04))" : "rgba(255,255,255,.035)",
+                boxShadow: i === 0 ? "0 10px 30px rgba(245,158,11,.08)" : "none"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 14px 10px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <div style={{
+                      width: 38,
+                      height: 38,
+                      flex: "0 0 38px",
+                      display: "grid",
+                      placeItems: "center",
+                      borderRadius: 14,
+                      background: "rgba(255,255,255,.06)",
+                      border: "1px solid rgba(255,255,255,.08)",
+                      fontSize: i < 3 ? 20 : 16,
+                      fontWeight: 900
+                    }}>{rankLabel(i)}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: 99, background: COLORS[row.person], flexShrink: 0 }} />
+                        <strong style={{ color: COLORS[row.person], fontSize: 18, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.person}</strong>
+                      </div>
+                      <div style={{ marginTop: 3, fontSize: 12, color: "#64748b", fontWeight: 700 }}>{row.played} Spiele gespielt</div>
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontSize: 10, color: "#64748b", fontWeight: 900, letterSpacing: ".5px" }}>PUNKTE</div>
+                    <div style={{ fontSize: 30, lineHeight: 1, fontWeight: 950, color: COLORS[row.person], letterSpacing: "-1px" }}>{row.pts}</div>
+                  </div>
                 </div>
-                <strong style={{ fontSize: 22, color: COLORS[row.person] }}>{row.pts}</strong>
-                <span><span style={{ color: "#34d399" }}>{row.won}</span>-<span>{row.drawn}</span>-<span style={{ color: "#f87171" }}>{row.lost}</span></span>
-                <span>{row.gf}:{row.ga}</span>
-                <strong style={{ color: row.td > 0 ? "#34d399" : row.td < 0 ? "#f87171" : "#94a3b8" }}>{row.td > 0 ? "+" : ""}{row.td}</strong>
-              </div>
+
+                <div style={{ display: "flex", gap: 7, padding: "0 14px 12px", flexWrap: "wrap" }}>
+                  <StatChip label="S" value={row.won} color="#34d399" />
+                  <StatChip label="U" value={row.drawn} color="#cbd5e1" />
+                  <StatChip label="N" value={row.lost} color="#f87171" />
+                  <StatChip label="Tore" value={`${row.gf}:${row.ga}`} />
+                  <StatChip label="TD" value={`${row.td > 0 ? "+" : ""}${row.td}`} color={tdColor(row.td)} />
+                </div>
+
+                <div style={{ padding: "11px 14px 13px", borderTop: "1px solid rgba(255,255,255,.06)", background: "rgba(0,0,0,.13)" }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {row.teams.map(team => (
+                      <span key={team} style={{
+                        maxWidth: "100%",
+                        border: "1px solid rgba(255,255,255,.08)",
+                        background: "rgba(255,255,255,.04)",
+                        color: "#cbd5e1",
+                        borderRadius: 999,
+                        padding: "6px 9px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis"
+                      }}>{FLAGS[team] || ""} {DE[team] || team}</span>
+                    ))}
+                  </div>
+                </div>
+              </article>
             ))}
           </div>
         )}
