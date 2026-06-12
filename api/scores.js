@@ -130,6 +130,7 @@ function transformMatch(match) {
   const score = match.score || {};
 
   return {
+    id: match.id,
     homeTeam,
     awayTeam,
     homeGoals: pickNumber(score.fullTime?.home, score.regularTime?.home, score.home),
@@ -146,12 +147,12 @@ function isKnownSelectedMatch(m) {
   return ALL_TEAMS.has(m.homeTeam) && ALL_TEAMS.has(m.awayTeam);
 }
 
-function toScoreMatch({ homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, status, minute }) {
-  return { homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, status, minute };
+function toScoreMatch({ id, homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, status, minute }) {
+  return { id, homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, status, minute };
 }
 
-function toUpcomingMatch({ homeTeam, awayTeam, date, time, group, status }) {
-  return { homeTeam, awayTeam, date, time, group, status };
+function toUpcomingMatch({ id, homeTeam, awayTeam, date, time, group, status }) {
+  return { id, homeTeam, awayTeam, date, time, group, status };
 }
 
 export default async function handler(req, res) {
@@ -191,7 +192,7 @@ export default async function handler(req, res) {
 
     const played = transformed
       .filter(m => m.status === "FINISHED" && Number.isInteger(m.homeGoals) && Number.isInteger(m.awayGoals))
-      .map(({ homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, status }) => ({ homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, status }))
+      .map(toScoreMatch)
       .sort((a, b) => `${b.date || "0000-00-00"} ${b.time || "00:00"}`.localeCompare(`${a.date || "0000-00-00"} ${a.time || "00:00"}`));
 
     const upcoming = transformed
