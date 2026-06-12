@@ -143,6 +143,10 @@ function statusLabel(status) {
   return status || "Geplant";
 }
 
+function displayTeamName(team) {
+  return `${FLAGS[team] || ""} ${DE[team] || team}`.trim();
+}
+
 function StatChip({ label, value, color }) {
   return (
     <div style={{
@@ -192,21 +196,38 @@ function TeamBlock({ team, align = "left" }) {
   );
 }
 
-function ScoreCard({ match, live = false }) {
+function ScoreCard({ match, live = false, onClick = null, selected = false }) {
+  const clickable = typeof onClick === "function";
+  const handleKeyDown = event => {
+    if (!clickable) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onClick();
+    }
+  };
+
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)",
-      gap: 12,
-      alignItems: "center",
-      background: live ? "linear-gradient(135deg,rgba(239,68,68,.13),rgba(255,255,255,.04))" : "rgba(255,255,255,.04)",
-      border: live ? "1px solid rgba(239,68,68,.32)" : "1px solid rgba(255,255,255,.08)",
-      borderRadius: 16,
-      padding: 14,
-      boxShadow: live ? "0 10px 28px rgba(239,68,68,.08)" : "none",
-    }}>
+    <article
+      onClick={onClick || undefined}
+      onKeyDown={handleKeyDown}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)",
+        gap: 12,
+        alignItems: "center",
+        background: live ? "linear-gradient(135deg,rgba(239,68,68,.13),rgba(255,255,255,.04))" : "rgba(255,255,255,.04)",
+        border: selected ? "1px solid rgba(251,191,36,.55)" : live ? "1px solid rgba(239,68,68,.32)" : "1px solid rgba(255,255,255,.08)",
+        borderRadius: 16,
+        padding: 14,
+        boxShadow: selected ? "0 0 0 2px rgba(251,191,36,.08)" : live ? "0 10px 28px rgba(239,68,68,.08)" : "none",
+        cursor: clickable ? "pointer" : "default",
+        outline: "none",
+      }}
+    >
       <TeamBlock team={match.homeTeam} />
-      <div style={{ textAlign: "center", minWidth: 70 }}>
+      <div style={{ textAlign: "center", minWidth: 74 }}>
         <div style={{
           display: "inline-flex",
           alignItems: "center",
@@ -227,8 +248,141 @@ function ScoreCard({ match, live = false }) {
         </div>
         <strong style={{ display: "block", fontSize: 26, lineHeight: 1, letterSpacing: "-1px", color: live ? "#fff" : "#e2e8f0" }}>{match.homeGoals}:{match.awayGoals}</strong>
         {(match.minute || match.time) && <div style={{ marginTop: 4, color: "#64748b", fontSize: 11, fontWeight: 800 }}>{match.minute ? `${match.minute}'` : `${match.time} Uhr`}</div>}
+        {clickable && <div style={{ marginTop: 5, color: selected ? "#fbbf24" : "#64748b", fontSize: 10, fontWeight: 900 }}>{selected ? "Aufstellung offen" : "Tippen für Aufstellung"}</div>}
       </div>
       <TeamBlock team={match.awayTeam} align="right" />
+    </article>
+  );
+}
+
+function PlayerRow({ player, index }) {
+  const number = player?.shirtNumber || player?.number || "";
+  const position = player?.position || "";
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "28px minmax(0,1fr)",
+      gap: 8,
+      alignItems: "center",
+      border: "1px solid rgba(255,255,255,.07)",
+      background: "rgba(255,255,255,.035)",
+      borderRadius: 11,
+      padding: "8px 9px",
+    }}>
+      <span style={{
+        width: 28,
+        height: 28,
+        borderRadius: 999,
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(255,255,255,.06)",
+        color: number ? "#fbbf24" : "#64748b",
+        fontSize: 11,
+        fontWeight: 950,
+      }}>{number || index + 1}</span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 850, color: "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player?.name || "Unbekannt"}</div>
+        {position && <div style={{ marginTop: 1, fontSize: 10, color: "#64748b", fontWeight: 800 }}>{position}</div>}
+      </div>
+    </div>
+  );
+}
+
+function PlayerList({ title, players = [], emptyText }) {
+  return (
+    <section>
+      <h4 style={{ margin: "0 0 8px", color: "#cbd5e1", fontSize: 12, letterSpacing: ".4px", textTransform: "uppercase" }}>
+        {title} <span style={{ color: "#64748b" }}>({players.length})</span>
+      </h4>
+      {players.length === 0 ? (
+        <p style={{ margin: 0, color: "#64748b", fontSize: 12, lineHeight: 1.35 }}>{emptyText}</p>
+      ) : (
+        <div style={{ display: "grid", gap: 6 }}>
+          {players.map((player, index) => <PlayerRow key={`${player.id || player.name || index}-${index}`} player={player} index={index} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TeamLineup({ team, fallbackName }) {
+  const lineup = Array.isArray(team?.lineup) ? team.lineup : [];
+  const bench = Array.isArray(team?.bench) ? team.bench : [];
+  const formation = team?.formation;
+  const coach = team?.coach?.name;
+
+  return (
+    <article style={{
+      border: "1px solid rgba(255,255,255,.08)",
+      background: "rgba(255,255,255,.035)",
+      borderRadius: 15,
+      padding: 12,
+      minWidth: 0,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <h3 style={{ margin: 0, color: "#fbbf24", fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team?.name || fallbackName || "Team"}</h3>
+          {coach && <div style={{ marginTop: 3, color: "#94a3b8", fontSize: 11, fontWeight: 750 }}>Coach: {coach}</div>}
+        </div>
+        {formation && <span style={{
+          border: "1px solid rgba(251,191,36,.28)",
+          background: "rgba(251,191,36,.12)",
+          color: "#fbbf24",
+          borderRadius: 999,
+          padding: "5px 8px",
+          fontSize: 11,
+          fontWeight: 950,
+          flexShrink: 0,
+        }}>{formation}</span>}
+      </div>
+      <div style={{ display: "grid", gap: 12 }}>
+        <PlayerList title="Startelf" players={lineup} emptyText="Keine Startelf-Daten geliefert." />
+        <PlayerList title="Bank" players={bench} emptyText="Keine Bank-Daten geliefert." />
+      </div>
+    </article>
+  );
+}
+
+function LineupPanel({ match, data, loading, error }) {
+  const hasHomePlayers = (data?.homeTeam?.lineup?.length || 0) + (data?.homeTeam?.bench?.length || 0) > 0;
+  const hasAwayPlayers = (data?.awayTeam?.lineup?.length || 0) + (data?.awayTeam?.bench?.length || 0) > 0;
+  const hasAnyPlayers = hasHomePlayers || hasAwayPlayers;
+
+  return (
+    <div style={{
+      border: "1px solid rgba(251,191,36,.18)",
+      background: "linear-gradient(135deg,rgba(251,191,36,.08),rgba(255,255,255,.025))",
+      borderRadius: 16,
+      padding: 12,
+      marginTop: -2,
+    }}>
+      {loading && <p style={{ margin: 0, color: "#fbbf24", fontSize: 13, fontWeight: 850 }}>⏳ Lade Aufstellung…</p>}
+      {error && <p style={{ margin: 0, color: "#fca5a5", fontSize: 13, fontWeight: 850 }}>❌ {error}</p>}
+      {!loading && !error && data && (
+        <>
+          <div style={{ marginBottom: 10, color: "#94a3b8", fontSize: 12, lineHeight: 1.45 }}>
+            Aufstellung aus den Match-Details von football-data.org.
+          </div>
+          {!hasAnyPlayers && (
+            <div style={{
+              marginBottom: 10,
+              color: "#cbd5e1",
+              background: "rgba(255,255,255,.04)",
+              border: "1px solid rgba(255,255,255,.08)",
+              borderRadius: 12,
+              padding: 11,
+              fontSize: 13,
+              lineHeight: 1.45,
+            }}>
+              Für dieses Spiel liefert football-data.org aktuell keine Startelf- oder Bank-Daten. Der Match-Detail-Endpunkt ist angebunden, aber die Felder sind leer.
+            </div>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 10 }}>
+            <TeamLineup team={data.homeTeam} fallbackName={displayTeamName(match.homeTeam)} />
+            <TeamLineup team={data.awayTeam} fallbackName={displayTeamName(match.awayTeam)} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -370,6 +524,10 @@ export default function App() {
   const [error, setError] = useState("");
   const [updated, setUpdated] = useState(null);
   const [tab, setTab] = useState("standings");
+  const [expandedMatchId, setExpandedMatchId] = useState(null);
+  const [lineups, setLineups] = useState({});
+  const [lineupLoading, setLineupLoading] = useState({});
+  const [lineupErrors, setLineupErrors] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -388,6 +546,36 @@ export default function App() {
       setLoading(false);
     }
   }, []);
+
+  const openLineup = useCallback(async (match) => {
+    const matchId = match?.id;
+    if (!matchId) {
+      setLineupErrors(prev => ({ ...prev, unknown: "Für dieses Spiel fehlt die Match-ID." }));
+      return;
+    }
+
+    if (expandedMatchId === matchId) {
+      setExpandedMatchId(null);
+      return;
+    }
+
+    setExpandedMatchId(matchId);
+    if (lineups[matchId] || lineupLoading[matchId]) return;
+
+    setLineupLoading(prev => ({ ...prev, [matchId]: true }));
+    setLineupErrors(prev => ({ ...prev, [matchId]: "" }));
+
+    try {
+      const res = await fetch(`/api/match?id=${encodeURIComponent(matchId)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Aufstellung konnte nicht geladen werden.");
+      setLineups(prev => ({ ...prev, [matchId]: data.match }));
+    } catch (e) {
+      setLineupErrors(prev => ({ ...prev, [matchId]: e.message || "Aufstellung konnte nicht geladen werden." }));
+    } finally {
+      setLineupLoading(prev => ({ ...prev, [matchId]: false }));
+    }
+  }, [expandedMatchId, lineups, lineupLoading]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -458,7 +646,7 @@ export default function App() {
             </div>
             {live.length > 0 && (
               <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
-                {live.map((m, i) => <ScoreCard key={`live-table-${m.homeTeam}-${m.awayTeam}-${i}`} match={m} live />)}
+                {live.map((m, i) => <ScoreCard key={`live-table-${m.id || m.homeTeam}-${m.awayTeam}-${i}`} match={m} live />)}
               </div>
             )}
             <StandingsList standings={liveProjectionStandings} liveMode officialRanks={officialRanks} />
@@ -468,7 +656,28 @@ export default function App() {
         {tab === "live" && (
           <div style={{ display: "grid", gap: 10 }}>
             {live.length === 0 && <p style={{ color: "#94a3b8", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", padding: 14, borderRadius: 14 }}>Gerade läuft kein Spiel aus eurer Liga.</p>}
-            {live.map((m, i) => <ScoreCard key={`${m.homeTeam}-${m.awayTeam}-${i}`} match={m} live />)}
+            {live.length > 0 && (
+              <div style={{ marginBottom: 2, color: "#94a3b8", fontSize: 13, lineHeight: 1.4, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: 12 }}>
+                Tippe ein Live-Spiel an, um Startelf und Bank zu laden, falls football-data.org die Aufstellung für dieses Spiel bereitstellt.
+              </div>
+            )}
+            {live.map((m, i) => {
+              const matchId = m.id || `${m.homeTeam}-${m.awayTeam}-${i}`;
+              const selected = expandedMatchId === m.id;
+              return (
+                <div key={`live-${matchId}`} style={{ display: "grid", gap: 8 }}>
+                  <ScoreCard match={m} live onClick={() => openLineup(m)} selected={selected} />
+                  {selected && (
+                    <LineupPanel
+                      match={m}
+                      data={lineups[m.id]}
+                      loading={!!lineupLoading[m.id]}
+                      error={lineupErrors[m.id]}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -477,14 +686,14 @@ export default function App() {
             {live.length > 0 && (
               <section style={{ marginBottom: 6 }}>
                 <h2 style={{ fontSize: 15, color: "#ef4444", margin: "0 0 8px" }}>🔴 Läuft gerade</h2>
-                <div style={{ display: "grid", gap: 8 }}>{live.map((m, i) => <ScoreCard key={`${m.homeTeam}-${m.awayTeam}-${i}`} match={m} live />)}</div>
+                <div style={{ display: "grid", gap: 8 }}>{live.map((m, i) => <ScoreCard key={`upcoming-live-${m.id || m.homeTeam}-${m.awayTeam}-${i}`} match={m} live />)}</div>
               </section>
             )}
             {Object.keys(upcomingByDate).length === 0 && <p style={{ color: "#94a3b8" }}>Keine kommenden Spiele gefunden.</p>}
             {Object.entries(upcomingByDate).map(([date, matches]) => (
               <section key={date}>
                 <h2 style={{ fontSize: 15, color: "#fbbf24" }}>{formatDate(date)}</h2>
-                {matches.map((m, i) => <UpcomingCard key={`${date}-${i}`} match={m} />)}
+                {matches.map((m, i) => <UpcomingCard key={`${date}-${m.id || i}`} match={m} />)}
               </section>
             ))}
           </div>
@@ -493,7 +702,7 @@ export default function App() {
         {tab === "played" && (
           <div style={{ display: "grid", gap: 10 }}>
             {played.length === 0 && <p style={{ color: "#94a3b8" }}>Noch keine Ergebnisse verfügbar.</p>}
-            {played.map((m, i) => <ScoreCard key={`${m.homeTeam}-${m.awayTeam}-${i}`} match={m} />)}
+            {played.map((m, i) => <ScoreCard key={`played-${m.id || m.homeTeam}-${m.awayTeam}-${i}`} match={m} />)}
           </div>
         )}
       </section>
