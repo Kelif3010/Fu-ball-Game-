@@ -116,18 +116,50 @@ function normalizeApiFootballTeam(lineupObject) {
   };
 }
 
+function readableEventLabel(type, detail, comments) {
+  const rawType = String(type || "").toLowerCase();
+  const rawDetail = String(detail || "").toLowerCase();
+  const rawComments = String(comments || "").toLowerCase();
+  const combined = `${rawType} ${rawDetail} ${rawComments}`;
+
+  if (rawType.includes("goal")) {
+    if (combined.includes("own")) return "⚽ Eigentor";
+    if (combined.includes("penalty")) return "⚽ Elfmeter-Tor";
+    if (combined.includes("missed")) return "❌ Elfmeter verschossen";
+    if (combined.includes("cancelled") || combined.includes("var")) return "⚽ Tor-Check";
+    return "⚽ Tor";
+  }
+
+  if (rawType.includes("card")) {
+    if (combined.includes("red") || combined.includes("second yellow")) return "🟥 Rote Karte";
+    if (combined.includes("yellow")) return "🟨 Gelbe Karte";
+    return "🟨 Karte";
+  }
+
+  if (rawType.includes("subst") || rawDetail.includes("substitution")) return "🔁 Auswechslung";
+
+  if (rawType.includes("var") || combined.includes("var")) return "📺 VAR-Check";
+
+  return detail || type || "Event";
+}
+
 function normalizeApiFootballEvent(event) {
   if (!event || typeof event !== "object") return null;
   const elapsed = event.time?.elapsed ?? null;
   const extra = event.time?.extra ?? null;
+  const originalType = event.type || "";
+  const originalDetail = event.detail || "";
+  const comments = event.comments || "";
   return {
     minute: Number.isInteger(elapsed) ? `${elapsed}${Number.isInteger(extra) ? `+${extra}` : ""}'` : "",
     team: normalizeTeamName(event.team?.name || ""),
     player: event.player?.name || "",
     assist: event.assist?.name || "",
-    type: event.type || "",
-    detail: event.detail || "",
-    comments: event.comments || "",
+    type: readableEventLabel(originalType, originalDetail, comments),
+    detail: "",
+    originalType,
+    originalDetail,
+    comments,
   };
 }
 
