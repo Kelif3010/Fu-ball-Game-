@@ -35,6 +35,11 @@ const TEAM_ALIASES = {
   "bosnia": "Bosnia and Herzegovina",
   "bosnia & herzegovina": "Bosnia and Herzegovina",
   "bosnia and herzegovina": "Bosnia and Herzegovina",
+  "bosnia herzegovina": "Bosnia and Herzegovina",
+  "bosnia-herzegovina": "Bosnia and Herzegovina",
+  "bosnia-hercegovina": "Bosnia and Herzegovina",
+  "bosnia and hercegovina": "Bosnia and Herzegovina",
+  "bosnia-herzegovina national football team": "Bosnia and Herzegovina",
   "curacao": "Curaçao",
   "curaçao": "Curaçao",
   "saudi arabia": "Saudi Arabia",
@@ -45,19 +50,40 @@ const TEAM_ALIASES = {
 const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED", "LIVE"]);
 const BLOCKED_STATUSES = new Set(["CANCELLED", "POSTPONED", "SUSPENDED"]);
 
+function aliasKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’']/g, "")
+    .replace(/[._]/g, " ")
+    .replace(/[\s-]+/g, " ")
+    .trim();
+}
+
 function normalizeTeamName(name) {
   if (!name) return "";
   const cleaned = String(name).trim();
-  const key = cleaned.toLowerCase();
-  if (TEAM_ALIASES[key]) return TEAM_ALIASES[key];
+  const directKey = cleaned.toLowerCase();
+  const fuzzyKey = aliasKey(cleaned);
+
+  if (TEAM_ALIASES[directKey]) return TEAM_ALIASES[directKey];
+  if (TEAM_ALIASES[fuzzyKey]) return TEAM_ALIASES[fuzzyKey];
+
   for (const team of ALL_TEAMS) {
-    if (team.toLowerCase() === key) return team;
+    if (team.toLowerCase() === directKey || aliasKey(team) === fuzzyKey) return team;
   }
   return cleaned;
 }
 
 function getTeamName(team) {
-  return normalizeTeamName(team?.name || team?.shortName || team?.tla || "");
+  const candidates = [team?.name, team?.shortName, team?.tla].filter(Boolean);
+  for (const candidate of candidates) {
+    const normalized = normalizeTeamName(candidate);
+    if (ALL_TEAMS.has(normalized)) return normalized;
+  }
+  return normalizeTeamName(candidates[0] || "");
 }
 
 function getBerlinDateAndTime(utcDate) {
