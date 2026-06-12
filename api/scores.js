@@ -50,6 +50,7 @@ const TEAM_ALIASES = {
 const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED", "LIVE"]);
 const BLOCKED_STATUSES = new Set(["CANCELLED", "POSTPONED", "SUSPENDED"]);
 const HALFTIME_BREAK_MINUTES = 15;
+const REFRESH_SECONDS = 300;
 
 function aliasKey(value) {
   return String(value || "")
@@ -221,13 +222,12 @@ export default async function handler(req, res) {
       .map(toUpcomingMatch)
       .sort((a, b) => `${a.date || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999-99-99"} ${b.time || "99:99"}`));
 
-    const refreshSeconds = live.length > 0 ? 300 : 300;
-    res.setHeader("Cache-Control", `s-maxage=${refreshSeconds}, stale-while-revalidate=${refreshSeconds * 2}`);
+    res.setHeader("Cache-Control", `public, max-age=0, s-maxage=${REFRESH_SECONDS}, must-revalidate`);
     return res.status(200).json({
       source: "football-data.org",
       competition: "WC",
       season: 2026,
-      refreshSeconds,
+      refreshSeconds: REFRESH_SECONDS,
       fetchedAt: new Date().toISOString(),
       live,
       played,
