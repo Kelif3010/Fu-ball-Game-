@@ -44,33 +44,60 @@ const ownerOf = team => Object.entries(PARTICIPANTS).find(([, teams]) => teams.i
 function buildTeamStats(matches) {
   const stats = {};
   for (const team of ALL_TEAMS) stats[team] = { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, pts: 0 };
+
   for (const match of matches) {
     const h = match.homeTeam;
     const a = match.awayTeam;
     if (!stats[h] || !stats[a]) continue;
+
     const hg = Number(match.homeGoals);
     const ag = Number(match.awayGoals);
     if (!Number.isFinite(hg) || !Number.isFinite(ag)) continue;
-    stats[h].played++; stats[a].played++;
-    stats[h].gf += hg; stats[h].ga += ag;
-    stats[a].gf += ag; stats[a].ga += hg;
-    if (hg > ag) { stats[h].pts += 3; stats[h].won++; stats[a].lost++; }
-    else if (ag > hg) { stats[a].pts += 3; stats[a].won++; stats[h].lost++; }
-    else { stats[h].pts++; stats[a].pts++; stats[h].drawn++; stats[a].drawn++; }
+
+    stats[h].played++;
+    stats[a].played++;
+    stats[h].gf += hg;
+    stats[h].ga += ag;
+    stats[a].gf += ag;
+    stats[a].ga += hg;
+
+    if (hg > ag) {
+      stats[h].pts += 3;
+      stats[h].won++;
+      stats[a].lost++;
+    } else if (ag > hg) {
+      stats[a].pts += 3;
+      stats[a].won++;
+      stats[h].lost++;
+    } else {
+      stats[h].pts++;
+      stats[a].pts++;
+      stats[h].drawn++;
+      stats[a].drawn++;
+    }
   }
+
   return stats;
 }
 
 function buildStandings(teamStats) {
-  return Object.entries(PARTICIPANTS).map(([person, teams]) => {
-    const total = teams.reduce((acc, team) => {
-      const s = teamStats[team] || {};
-      acc.played += s.played || 0; acc.won += s.won || 0; acc.drawn += s.drawn || 0; acc.lost += s.lost || 0;
-      acc.gf += s.gf || 0; acc.ga += s.ga || 0; acc.pts += s.pts || 0;
-      return acc;
-    }, { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, pts: 0 });
-    return { person, teams, ...total, td: total.gf - total.ga };
-  }).sort((a, b) => b.pts - a.pts || b.td - a.td || b.gf - a.gf);
+  return Object.entries(PARTICIPANTS)
+    .map(([person, teams]) => {
+      const total = teams.reduce((acc, team) => {
+        const s = teamStats[team] || {};
+        acc.played += s.played || 0;
+        acc.won += s.won || 0;
+        acc.drawn += s.drawn || 0;
+        acc.lost += s.lost || 0;
+        acc.gf += s.gf || 0;
+        acc.ga += s.ga || 0;
+        acc.pts += s.pts || 0;
+        return acc;
+      }, { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, pts: 0 });
+
+      return { person, teams, ...total, td: total.gf - total.ga };
+    })
+    .sort((a, b) => b.pts - a.pts || b.td - a.td || b.gf - a.gf || a.person.localeCompare(b.person));
 }
 
 function rankMap(standings) {
@@ -82,15 +109,25 @@ function rankMap(standings) {
 
 function formatDate(dateStr) {
   if (!dateStr) return "Datum offen";
-  return new Date(`${dateStr}T12:00:00`).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
+  return new Date(`${dateStr}T12:00:00`).toLocaleDateString("de-DE", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 const rankLabel = index => index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `${index + 1}.`;
 const tdColor = value => value > 0 ? "#34d399" : value < 0 ? "#f87171" : "#94a3b8";
 
-function movementLabel(delta) {
-  if (!delta) return "—";
-  return delta > 0 ? `↗ +${delta}` : `↘ ${delta}`;
+function rankMovementText(delta, currentRank) {
+  if (delta === 0) return `Bleibt #${currentRank}`;
+  return delta > 0 ? `↗ +${delta} Plätze` : `↘ ${Math.abs(delta)} Plätze`;
+}
+
+function pointsMovementText(delta) {
+  if (delta === 0) return "±0";
+  return delta > 0 ? `+${delta}` : `${delta}`;
 }
 
 function movementColor(delta) {
@@ -115,7 +152,7 @@ function StatChip({ label, value, color }) {
       border: "1px solid rgba(255,255,255,.075)",
       borderRadius: 12,
       padding: "8px 9px",
-      textAlign: "center"
+      textAlign: "center",
     }}>
       <div style={{ fontSize: 10, color: "#64748b", fontWeight: 900, letterSpacing: ".5px", textTransform: "uppercase" }}>{label}</div>
       <div style={{ marginTop: 3, color: color || "#e2e8f0", fontSize: 15, fontWeight: 900 }}>{value}</div>
@@ -136,7 +173,7 @@ function InfoPill({ label, value, color }) {
       padding: "6px 9px",
       fontSize: 12,
       fontWeight: 900,
-      whiteSpace: "nowrap"
+      whiteSpace: "nowrap",
     }}>
       <span style={{ color: "#94a3b8" }}>{label}</span> {value}
     </span>
@@ -210,7 +247,7 @@ function UpcomingCard({ match }) {
       border: isDuel ? "1px solid rgba(245,158,11,.22)" : "1px solid rgba(255,255,255,.08)",
       borderRadius: 14,
       padding: 14,
-      marginBottom: 8
+      marginBottom: 8,
     }}>
       <TeamBlock team={match.homeTeam} />
       <div style={{ textAlign: "center", color: "#94a3b8", fontWeight: 900, minWidth: 58 }}>
@@ -223,8 +260,9 @@ function UpcomingCard({ match }) {
 }
 
 function StandingCard({ row, index, liveMode = false, officialMeta = null }) {
-  const officialRank = officialMeta?.rank || index + 1;
-  const rankDelta = officialRank - (index + 1);
+  const currentRank = index + 1;
+  const officialRank = officialMeta?.rank || currentRank;
+  const rankDelta = officialRank - currentRank;
   const officialPts = officialMeta?.row?.pts ?? row.pts;
   const ptsDelta = row.pts - officialPts;
 
@@ -238,7 +276,7 @@ function StandingCard({ row, index, liveMode = false, officialMeta = null }) {
           ? "linear-gradient(135deg,rgba(239,68,68,.13),rgba(255,255,255,.04))"
           : "linear-gradient(135deg,rgba(245,158,11,.13),rgba(255,255,255,.04))"
         : "rgba(255,255,255,.035)",
-      boxShadow: index === 0 ? (liveMode ? "0 10px 30px rgba(239,68,68,.08)" : "0 10px 30px rgba(245,158,11,.08)") : "none"
+      boxShadow: index === 0 ? (liveMode ? "0 10px 30px rgba(239,68,68,.08)" : "0 10px 30px rgba(245,158,11,.08)") : "none",
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 14px 10px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -252,7 +290,7 @@ function StandingCard({ row, index, liveMode = false, officialMeta = null }) {
             background: "rgba(255,255,255,.06)",
             border: "1px solid rgba(255,255,255,.08)",
             fontSize: index < 3 ? 20 : 16,
-            fontWeight: 900
+            fontWeight: 900,
           }}>{rankLabel(index)}</div>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
@@ -271,9 +309,9 @@ function StandingCard({ row, index, liveMode = false, officialMeta = null }) {
 
       {liveMode && officialMeta && (
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", padding: "0 14px 10px" }}>
-          <InfoPill label="Platz" value={movementLabel(rankDelta)} color={movementColor(rankDelta)} />
-          <InfoPill label="Punkte" value={ptsDelta > 0 ? `+${ptsDelta}` : ptsDelta} color={movementColor(ptsDelta)} />
-          <InfoPill label="Offiziell" value={`#${officialRank}`} />
+          <InfoPill label="Live-Platz" value={rankMovementText(rankDelta, currentRank)} color={movementColor(rankDelta)} />
+          <InfoPill label="Live-Punkte" value={pointsMovementText(ptsDelta)} color={movementColor(ptsDelta)} />
+          <InfoPill label="Offiziell" value={`#${officialRank} · ${officialPts}P`} />
         </div>
       )}
 
@@ -299,7 +337,7 @@ function StandingCard({ row, index, liveMode = false, officialMeta = null }) {
               fontWeight: 700,
               whiteSpace: "nowrap",
               overflow: "hidden",
-              textOverflow: "ellipsis"
+              textOverflow: "ellipsis",
             }}>{FLAGS[team] || ""} {DE[team] || team}</span>
           ))}
         </div>
