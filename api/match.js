@@ -10,40 +10,15 @@ const ALL_TEAMS = new Set([
 ]);
 
 const TEAM_ALIASES = {
-  "united states": "USA",
-  "united states of america": "USA",
-  "usa": "USA",
-  "holland": "Netherlands",
-  "the netherlands": "Netherlands",
-  "côte d'ivoire": "Ivory Coast",
-  "cote d'ivoire": "Ivory Coast",
-  "ivory coast": "Ivory Coast",
-  "korea republic": "South Korea",
-  "republic of korea": "South Korea",
-  "south korea": "South Korea",
-  "dr congo": "DR Congo",
-  "d.r. congo": "DR Congo",
-  "democratic republic of congo": "DR Congo",
-  "democratic republic of the congo": "DR Congo",
-  "drc": "DR Congo",
-  "congo dr": "DR Congo",
-  "czechia": "Czech Republic",
-  "czech republic": "Czech Republic",
-  "cabo verde": "Cape Verde",
-  "cape verde": "Cape Verde",
-  "bosnia": "Bosnia and Herzegovina",
-  "bosnia & herzegovina": "Bosnia and Herzegovina",
-  "bosnia and herzegovina": "Bosnia and Herzegovina",
-  "bosnia herzegovina": "Bosnia and Herzegovina",
-  "bosnia-herzegovina": "Bosnia and Herzegovina",
-  "bosnia-hercegovina": "Bosnia and Herzegovina",
-  "bosnia and hercegovina": "Bosnia and Herzegovina",
-  "bosnia-herzegovina national football team": "Bosnia and Herzegovina",
-  "curacao": "Curaçao",
-  "curaçao": "Curaçao",
-  "saudi arabia": "Saudi Arabia",
-  "south africa": "South Africa",
-  "new zealand": "New Zealand",
+  "united states": "USA", "united states of america": "USA", "usa": "USA",
+  "holland": "Netherlands", "the netherlands": "Netherlands",
+  "côte d'ivoire": "Ivory Coast", "cote d'ivoire": "Ivory Coast", "ivory coast": "Ivory Coast",
+  "korea republic": "South Korea", "republic of korea": "South Korea", "south korea": "South Korea",
+  "dr congo": "DR Congo", "d.r. congo": "DR Congo", "democratic republic of congo": "DR Congo", "democratic republic of the congo": "DR Congo", "drc": "DR Congo", "congo dr": "DR Congo",
+  "czechia": "Czech Republic", "czech republic": "Czech Republic",
+  "cabo verde": "Cape Verde", "cape verde": "Cape Verde",
+  "bosnia": "Bosnia and Herzegovina", "bosnia & herzegovina": "Bosnia and Herzegovina", "bosnia and herzegovina": "Bosnia and Herzegovina", "bosnia herzegovina": "Bosnia and Herzegovina", "bosnia-herzegovina": "Bosnia and Herzegovina", "bosnia-hercegovina": "Bosnia and Herzegovina", "bosnia and hercegovina": "Bosnia and Herzegovina", "bosnia-herzegovina national football team": "Bosnia and Herzegovina",
+  "curacao": "Curaçao", "curaçao": "Curaçao", "saudi arabia": "Saudi Arabia", "south africa": "South Africa", "new zealand": "New Zealand",
 };
 
 function aliasKey(value) {
@@ -104,12 +79,7 @@ function normalizeApiFootballPlayer(entry) {
 
 function normalizeCoach(coach) {
   if (!coach || typeof coach !== "object") return null;
-  return {
-    id: coach.id ?? null,
-    name: coach.name || "",
-    nationality: coach.nationality || "",
-    photo: coach.photo || "",
-  };
+  return { id: coach.id ?? null, name: coach.name || "", nationality: coach.nationality || "", photo: coach.photo || "" };
 }
 
 function normalizeFootballDataTeam(team) {
@@ -146,6 +116,21 @@ function normalizeApiFootballTeam(lineupObject) {
   };
 }
 
+function normalizeApiFootballEvent(event) {
+  if (!event || typeof event !== "object") return null;
+  const elapsed = event.time?.elapsed ?? null;
+  const extra = event.time?.extra ?? null;
+  return {
+    minute: Number.isInteger(elapsed) ? `${elapsed}${Number.isInteger(extra) ? `+${extra}` : ""}'` : "",
+    team: normalizeTeamName(event.team?.name || ""),
+    player: event.player?.name || "",
+    assist: event.assist?.name || "",
+    type: event.type || "",
+    detail: event.detail || "",
+    comments: event.comments || "",
+  };
+}
+
 function hasPlayers(team) {
   return (team?.lineup?.length || 0) + (team?.bench?.length || 0) > 0;
 }
@@ -154,15 +139,12 @@ function getBerlinDate(utcDate) {
   if (!utcDate) return "";
   const d = new Date(utcDate);
   if (Number.isNaN(d.getTime())) return "";
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Berlin",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(d).reduce((acc, part) => {
-    if (part.type !== "literal") acc[part.type] = part.value;
-    return acc;
-  }, {});
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" })
+    .formatToParts(d)
+    .reduce((acc, part) => {
+      if (part.type !== "literal") acc[part.type] = part.value;
+      return acc;
+    }, {});
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
@@ -187,15 +169,9 @@ function unique(values) {
 
 function bestFixtureMatch(fixtures, homeName, awayName) {
   const candidates = Array.isArray(fixtures) ? fixtures : [];
-  return candidates.find(item => {
-    const home = item?.teams?.home?.name;
-    const away = item?.teams?.away?.name;
-    return namesMatch(home, homeName) && namesMatch(away, awayName);
-  }) || candidates.find(item => {
-    const home = item?.teams?.home?.name;
-    const away = item?.teams?.away?.name;
-    return namesMatch(home, awayName) && namesMatch(away, homeName);
-  }) || null;
+  return candidates.find(item => namesMatch(item?.teams?.home?.name, homeName) && namesMatch(item?.teams?.away?.name, awayName))
+    || candidates.find(item => namesMatch(item?.teams?.home?.name, awayName) && namesMatch(item?.teams?.away?.name, homeName))
+    || null;
 }
 
 async function apiFootballGet(path, params, headers) {
@@ -230,23 +206,17 @@ async function findApiFootballFixture({ homeTeam, awayTeam, utcDate }, headers) 
     const fixtures = Array.isArray(data?.response) ? data.response : [];
     diagnostics.push({ label: attempt.label, count: fixtures.length });
     const fixture = bestFixtureMatch(fixtures, homeTeam?.name, awayTeam?.name);
-    if (fixture?.fixture?.id) {
-      return { fixture, diagnostics };
-    }
+    if (fixture?.fixture?.id) return { fixture, diagnostics };
   }
 
   return { fixture: null, diagnostics };
 }
 
-async function loadApiFootballLineups(match) {
+async function loadApiFootballMatchCenter(match) {
   const apiKey = process.env.API_FOOTBALL_KEY;
   if (!apiKey) return null;
 
-  const headers = {
-    "x-apisports-key": apiKey,
-    "Accept": "application/json",
-  };
-
+  const headers = { "x-apisports-key": apiKey, "Accept": "application/json" };
   const { fixture, diagnostics } = await findApiFootballFixture(match, headers);
   const fixtureId = fixture?.fixture?.id;
   if (!fixtureId) {
@@ -259,19 +229,24 @@ async function loadApiFootballLineups(match) {
     };
   }
 
-  const lineupsData = await apiFootballGet("fixtures/lineups", { fixture: fixtureId }, headers);
+  const [lineupsData, eventsData] = await Promise.all([
+    apiFootballGet("fixtures/lineups", { fixture: fixtureId }, headers),
+    apiFootballGet("fixtures/events", { fixture: fixtureId }, headers).catch(() => ({ response: [] })),
+  ]);
+
   const lineupRows = Array.isArray(lineupsData?.response) ? lineupsData.response : [];
   const normalizedRows = lineupRows.map(normalizeApiFootballTeam);
   const apiHome = normalizedRows.find(team => namesMatch(team.name, match.homeTeam?.name)) || normalizedRows[0] || null;
   const apiAway = normalizedRows.find(team => namesMatch(team.name, match.awayTeam?.name)) || normalizedRows.find(team => team !== apiHome) || normalizedRows[1] || null;
+  const events = Array.isArray(eventsData?.response) ? eventsData.response.map(normalizeApiFootballEvent).filter(Boolean) : [];
 
-  if (!hasPlayers(apiHome) && !hasPlayers(apiAway)) {
+  if (!hasPlayers(apiHome) && !hasPlayers(apiAway) && events.length === 0) {
     return {
       empty: true,
       fixtureId,
       source: "api-football",
       sourceLabel: "API-Football / API-Sports",
-      fallbackReason: "API-Football hat das Fixture gefunden, liefert dafür aber aktuell keine Lineups.",
+      fallbackReason: "API-Football hat das Fixture gefunden, liefert dafür aber aktuell keine Lineups oder Events.",
       diagnostics,
     };
   }
@@ -280,6 +255,7 @@ async function loadApiFootballLineups(match) {
     fixtureId,
     homeTeam: apiHome,
     awayTeam: apiAway,
+    events,
     source: "api-football",
     sourceLabel: "API-Football / API-Sports",
     diagnostics,
@@ -293,14 +269,10 @@ export default async function handler(req, res) {
   }
 
   const token = process.env.FOOTBALL_DATA_TOKEN;
-  if (!token) {
-    return res.status(500).json({ error: "FOOTBALL_DATA_TOKEN fehlt in den Vercel Environment Variables." });
-  }
+  if (!token) return res.status(500).json({ error: "FOOTBALL_DATA_TOKEN fehlt in den Vercel Environment Variables." });
 
   const matchId = req.query?.id;
-  if (!matchId || !/^\d+$/.test(String(matchId))) {
-    return res.status(400).json({ error: "Gültige Match-ID fehlt." });
-  }
+  if (!matchId || !/^\d+$/.test(String(matchId))) return res.status(400).json({ error: "Gültige Match-ID fehlt." });
 
   try {
     const fdRes = await fetch(`https://api.football-data.org/v4/matches/${encodeURIComponent(matchId)}`, {
@@ -309,10 +281,7 @@ export default async function handler(req, res) {
 
     const data = await fdRes.json().catch(() => null);
     if (!fdRes.ok) {
-      return res.status(fdRes.status).json({
-        error: data?.message || data?.error || "Match-Details konnten nicht geladen werden.",
-        details: data || null,
-      });
+      return res.status(fdRes.status).json({ error: data?.message || data?.error || "Match-Details konnten nicht geladen werden.", details: data || null });
     }
 
     const match = {
@@ -323,41 +292,40 @@ export default async function handler(req, res) {
       awayTeam: normalizeFootballDataTeam(data?.awayTeam),
       lineupSource: "football-data.org",
       lineupSourceLabel: "football-data.org",
+      events: [],
     };
 
     const footballDataHasPlayers = hasPlayers(match.homeTeam) || hasPlayers(match.awayTeam);
 
-    if (!footballDataHasPlayers && process.env.API_FOOTBALL_KEY) {
-      const apiFootballLineups = await loadApiFootballLineups(match).catch(error => ({ error }));
-
+    if ((!footballDataHasPlayers || match.events.length === 0) && process.env.API_FOOTBALL_KEY) {
+      const apiFootballMatchCenter = await loadApiFootballMatchCenter(match).catch(error => ({ error }));
       match.lineupFallbackTried = true;
 
-      if (apiFootballLineups && !apiFootballLineups.error && !apiFootballLineups.empty) {
-        match.homeTeam = apiFootballLineups.homeTeam || match.homeTeam;
-        match.awayTeam = apiFootballLineups.awayTeam || match.awayTeam;
-        match.apiFootballFixtureId = apiFootballLineups.fixtureId;
-        match.lineupSource = apiFootballLineups.source;
-        match.lineupSourceLabel = apiFootballLineups.sourceLabel;
-        match.lineupDiagnostics = apiFootballLineups.diagnostics || [];
-      } else if (apiFootballLineups?.empty) {
-        match.apiFootballFixtureId = apiFootballLineups.fixtureId || null;
-        match.lineupSource = apiFootballLineups.source;
-        match.lineupSourceLabel = apiFootballLineups.sourceLabel;
-        match.lineupFallbackReason = apiFootballLineups.fallbackReason;
-        match.lineupDiagnostics = apiFootballLineups.diagnostics || [];
-      } else if (apiFootballLineups?.error) {
-        match.lineupFallbackError = apiFootballLineups.error.message || "API-Football konnte keine Aufstellung liefern.";
+      if (apiFootballMatchCenter && !apiFootballMatchCenter.error && !apiFootballMatchCenter.empty) {
+        if (!footballDataHasPlayers) {
+          match.homeTeam = apiFootballMatchCenter.homeTeam || match.homeTeam;
+          match.awayTeam = apiFootballMatchCenter.awayTeam || match.awayTeam;
+        }
+        match.events = apiFootballMatchCenter.events || [];
+        match.apiFootballFixtureId = apiFootballMatchCenter.fixtureId;
+        match.lineupSource = apiFootballMatchCenter.source;
+        match.lineupSourceLabel = apiFootballMatchCenter.sourceLabel;
+        match.lineupDiagnostics = apiFootballMatchCenter.diagnostics || [];
+      } else if (apiFootballMatchCenter?.empty) {
+        match.apiFootballFixtureId = apiFootballMatchCenter.fixtureId || null;
+        match.lineupSource = apiFootballMatchCenter.source;
+        match.lineupSourceLabel = apiFootballMatchCenter.sourceLabel;
+        match.lineupFallbackReason = apiFootballMatchCenter.fallbackReason;
+        match.lineupDiagnostics = apiFootballMatchCenter.diagnostics || [];
+      } else if (apiFootballMatchCenter?.error) {
+        match.lineupFallbackError = apiFootballMatchCenter.error.message || "API-Football konnte keine Match-Center-Daten liefern.";
       }
     } else if (!footballDataHasPlayers && !process.env.API_FOOTBALL_KEY) {
       match.lineupFallbackReason = "API_FOOTBALL_KEY fehlt in Vercel. Deshalb kann API-Football nicht als Fallback genutzt werden.";
     }
 
-    res.setHeader("Cache-Control", "s-maxage=30, stale-while-revalidate=120");
-    return res.status(200).json({
-      source: match.lineupSource,
-      sourceLabel: match.lineupSourceLabel,
-      match,
-    });
+    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=900");
+    return res.status(200).json({ source: match.lineupSource, sourceLabel: match.lineupSourceLabel, fetchedAt: new Date().toISOString(), match });
   } catch (error) {
     return res.status(500).json({ error: error?.message || "Unbekannter Serverfehler beim Laden der Match-Details." });
   }
