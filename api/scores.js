@@ -49,6 +49,7 @@ const TEAM_ALIASES = {
 
 const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED", "LIVE"]);
 const BLOCKED_STATUSES = new Set(["CANCELLED", "POSTPONED", "SUSPENDED"]);
+const HALFTIME_BREAK_MINUTES = 15;
 
 function aliasKey(value) {
   return String(value || "")
@@ -123,6 +124,26 @@ function pickNumber(...values) {
   return null;
 }
 
+function estimateLiveMinute(match) {
+  const apiMinute = pickNumber(match.minute, match.matchTime);
+  if (apiMinute && apiMinute > 0) return apiMinute;
+
+  if (!LIVE_STATUSES.has(match.status) || !match.utcDate) return null;
+  if (match.status === "PAUSED") return 45;
+
+  const kickoffMs = new Date(match.utcDate).getTime();
+  if (!Number.isFinite(kickoffMs)) return null;
+
+  const elapsedRealMinutes = Math.floor((Date.now() - kickoffMs) / 60000) + 1;
+  if (elapsedRealMinutes < 1) return null;
+
+  if (elapsedRealMinutes <= 45) return elapsedRealMinutes;
+  if (elapsedRealMinutes <= 45 + HALFTIME_BREAK_MINUTES) return 45;
+
+  const secondHalfMinute = 45 + (elapsedRealMinutes - 45 - HALFTIME_BREAK_MINUTES);
+  return Math.min(90, Math.max(46, secondHalfMinute));
+}
+
 function transformMatch(match) {
   const homeTeam = getTeamName(match.homeTeam);
   const awayTeam = getTeamName(match.awayTeam);
@@ -139,7 +160,7 @@ function transformMatch(match) {
     time,
     group: getGroup(match),
     status: match.status || "",
-    minute: match.minute || match.matchTime || null,
+    minute: estimateLiveMinute(match),
   };
 }
 
