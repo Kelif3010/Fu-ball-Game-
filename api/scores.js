@@ -200,12 +200,13 @@ export default async function handler(req, res) {
       .map(toUpcomingMatch)
       .sort((a, b) => `${a.date || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999-99-99"} ${b.time || "99:99"}`));
 
-    const cacheHeader = live.length > 0 ? "s-maxage=30, stale-while-revalidate=60" : "s-maxage=300, stale-while-revalidate=900";
-    res.setHeader("Cache-Control", cacheHeader);
+    const refreshSeconds = live.length > 0 ? 300 : 300;
+    res.setHeader("Cache-Control", `s-maxage=${refreshSeconds}, stale-while-revalidate=${refreshSeconds * 2}`);
     return res.status(200).json({
       source: "football-data.org",
       competition: "WC",
       season: 2026,
+      refreshSeconds,
       fetchedAt: new Date().toISOString(),
       live,
       played,
