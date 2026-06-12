@@ -73,6 +73,13 @@ function buildStandings(teamStats) {
   }).sort((a, b) => b.pts - a.pts || b.td - a.td || b.gf - a.gf);
 }
 
+function rankMap(standings) {
+  return standings.reduce((acc, row, index) => {
+    acc[row.person] = { rank: index + 1, row };
+    return acc;
+  }, {});
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return "Datum offen";
   return new Date(`${dateStr}T12:00:00`).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
@@ -80,6 +87,17 @@ function formatDate(dateStr) {
 
 const rankLabel = index => index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `${index + 1}.`;
 const tdColor = value => value > 0 ? "#34d399" : value < 0 ? "#f87171" : "#94a3b8";
+
+function movementLabel(delta) {
+  if (!delta) return "—";
+  return delta > 0 ? `↗ +${delta}` : `↘ ${delta}`;
+}
+
+function movementColor(delta) {
+  if (delta > 0) return "#34d399";
+  if (delta < 0) return "#f87171";
+  return "#94a3b8";
+}
 
 function statusLabel(status) {
   if (status === "IN_PLAY" || status === "LIVE") return "Live";
@@ -102,6 +120,26 @@ function StatChip({ label, value, color }) {
       <div style={{ fontSize: 10, color: "#64748b", fontWeight: 900, letterSpacing: ".5px", textTransform: "uppercase" }}>{label}</div>
       <div style={{ marginTop: 3, color: color || "#e2e8f0", fontSize: 15, fontWeight: 900 }}>{value}</div>
     </div>
+  );
+}
+
+function InfoPill({ label, value, color }) {
+  return (
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 5,
+      border: `1px solid ${color ? `${color}55` : "rgba(255,255,255,.1)"}`,
+      background: color ? `${color}18` : "rgba(255,255,255,.045)",
+      color: color || "#cbd5e1",
+      borderRadius: 999,
+      padding: "6px 9px",
+      fontSize: 12,
+      fontWeight: 900,
+      whiteSpace: "nowrap"
+    }}>
+      <span style={{ color: "#94a3b8" }}>{label}</span> {value}
+    </span>
   );
 }
 
@@ -184,6 +222,108 @@ function UpcomingCard({ match }) {
   );
 }
 
+function StandingCard({ row, index, liveMode = false, officialMeta = null }) {
+  const officialRank = officialMeta?.rank || index + 1;
+  const rankDelta = officialRank - (index + 1);
+  const officialPts = officialMeta?.row?.pts ?? row.pts;
+  const ptsDelta = row.pts - officialPts;
+
+  return (
+    <article style={{
+      border: `1px solid ${index === 0 ? (liveMode ? "rgba(239,68,68,.32)" : "rgba(245,158,11,.28)") : "rgba(255,255,255,.08)"}`,
+      borderRadius: 18,
+      overflow: "hidden",
+      background: index === 0
+        ? liveMode
+          ? "linear-gradient(135deg,rgba(239,68,68,.13),rgba(255,255,255,.04))"
+          : "linear-gradient(135deg,rgba(245,158,11,.13),rgba(255,255,255,.04))"
+        : "rgba(255,255,255,.035)",
+      boxShadow: index === 0 ? (liveMode ? "0 10px 30px rgba(239,68,68,.08)" : "0 10px 30px rgba(245,158,11,.08)") : "none"
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 14px 10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <div style={{
+            width: 38,
+            height: 38,
+            flex: "0 0 38px",
+            display: "grid",
+            placeItems: "center",
+            borderRadius: 14,
+            background: "rgba(255,255,255,.06)",
+            border: "1px solid rgba(255,255,255,.08)",
+            fontSize: index < 3 ? 20 : 16,
+            fontWeight: 900
+          }}>{rankLabel(index)}</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: COLORS[row.person], flexShrink: 0 }} />
+              <strong style={{ color: COLORS[row.person], fontSize: 18, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.person}</strong>
+            </div>
+            <div style={{ marginTop: 3, fontSize: 12, color: "#64748b", fontWeight: 700 }}>{row.played} Spiele gewertet</div>
+          </div>
+        </div>
+
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div style={{ fontSize: 10, color: "#64748b", fontWeight: 900, letterSpacing: ".5px" }}>PUNKTE</div>
+          <div style={{ fontSize: 30, lineHeight: 1, fontWeight: 950, color: COLORS[row.person], letterSpacing: "-1px" }}>{row.pts}</div>
+        </div>
+      </div>
+
+      {liveMode && officialMeta && (
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", padding: "0 14px 10px" }}>
+          <InfoPill label="Platz" value={movementLabel(rankDelta)} color={movementColor(rankDelta)} />
+          <InfoPill label="Punkte" value={ptsDelta > 0 ? `+${ptsDelta}` : ptsDelta} color={movementColor(ptsDelta)} />
+          <InfoPill label="Offiziell" value={`#${officialRank}`} />
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 7, padding: "0 14px 12px", flexWrap: "wrap" }}>
+        <StatChip label="S" value={row.won} color="#34d399" />
+        <StatChip label="U" value={row.drawn} color="#cbd5e1" />
+        <StatChip label="N" value={row.lost} color="#f87171" />
+        <StatChip label="Tore" value={`${row.gf}:${row.ga}`} />
+        <StatChip label="TD" value={`${row.td > 0 ? "+" : ""}${row.td}`} color={tdColor(row.td)} />
+      </div>
+
+      <div style={{ padding: "11px 14px 13px", borderTop: "1px solid rgba(255,255,255,.06)", background: "rgba(0,0,0,.13)" }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {row.teams.map(team => (
+            <span key={team} style={{
+              maxWidth: "100%",
+              border: "1px solid rgba(255,255,255,.08)",
+              background: "rgba(255,255,255,.04)",
+              color: "#cbd5e1",
+              borderRadius: 999,
+              padding: "6px 9px",
+              fontSize: 12,
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis"
+            }}>{FLAGS[team] || ""} {DE[team] || team}</span>
+          ))}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function StandingsList({ standings, liveMode = false, officialRanks = {} }) {
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {standings.map((row, i) => (
+        <StandingCard
+          key={row.person}
+          row={row}
+          index={i}
+          liveMode={liveMode}
+          officialMeta={liveMode ? officialRanks[row.person] : null}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   const [live, setLive] = useState([]);
   const [played, setPlayed] = useState([]);
@@ -213,8 +353,19 @@ export default function App() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (live.length === 0) return undefined;
+    const interval = window.setInterval(load, 30000);
+    return () => window.clearInterval(interval);
+  }, [live.length, load]);
+
   const teamStats = useMemo(() => buildTeamStats(played), [played]);
   const standings = useMemo(() => buildStandings(teamStats), [teamStats]);
+  const officialRanks = useMemo(() => rankMap(standings), [standings]);
+
+  const liveProjectionStats = useMemo(() => buildTeamStats([...played, ...live]), [played, live]);
+  const liveProjectionStandings = useMemo(() => buildStandings(liveProjectionStats), [liveProjectionStats]);
+
   const upcomingByDate = useMemo(() => {
     return upcoming.reduce((acc, match) => {
       const key = match.date || "Datum offen";
@@ -244,6 +395,7 @@ export default function App() {
         <nav style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
           {[
             ["standings", "🏆 Rangliste"],
+            ["liveTable", live.length > 0 ? `📈 Live-Tabelle (${live.length})` : "📈 Live-Tabelle"],
             ["live", live.length > 0 ? `🔴 Live (${live.length})` : "🔴 Live"],
             ["upcoming", "📅 Nächste Spiele"],
             ["played", "⚽ Ergebnisse"],
@@ -253,74 +405,26 @@ export default function App() {
         </nav>
 
         {tab === "standings" && (
-          <div style={{ display: "grid", gap: 10 }}>
-            {standings.map((row, i) => (
-              <article key={row.person} style={{
-                border: `1px solid ${i === 0 ? "rgba(245,158,11,.28)" : "rgba(255,255,255,.08)"}`,
-                borderRadius: 18,
-                overflow: "hidden",
-                background: i === 0 ? "linear-gradient(135deg,rgba(245,158,11,.13),rgba(255,255,255,.04))" : "rgba(255,255,255,.035)",
-                boxShadow: i === 0 ? "0 10px 30px rgba(245,158,11,.08)" : "none"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 14px 10px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                    <div style={{
-                      width: 38,
-                      height: 38,
-                      flex: "0 0 38px",
-                      display: "grid",
-                      placeItems: "center",
-                      borderRadius: 14,
-                      background: "rgba(255,255,255,.06)",
-                      border: "1px solid rgba(255,255,255,.08)",
-                      fontSize: i < 3 ? 20 : 16,
-                      fontWeight: 900
-                    }}>{rankLabel(i)}</div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: 99, background: COLORS[row.person], flexShrink: 0 }} />
-                        <strong style={{ color: COLORS[row.person], fontSize: 18, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.person}</strong>
-                      </div>
-                      <div style={{ marginTop: 3, fontSize: 12, color: "#64748b", fontWeight: 700 }}>{row.played} Spiele gespielt</div>
-                    </div>
-                  </div>
+          <>
+            <div style={{ marginBottom: 10, color: "#94a3b8", fontSize: 13, lineHeight: 1.4, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: 12 }}>
+              🏆 Offizielle Rangliste: Hier zählen nur beendete Spiele.
+            </div>
+            <StandingsList standings={standings} />
+          </>
+        )}
 
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontSize: 10, color: "#64748b", fontWeight: 900, letterSpacing: ".5px" }}>PUNKTE</div>
-                    <div style={{ fontSize: 30, lineHeight: 1, fontWeight: 950, color: COLORS[row.person], letterSpacing: "-1px" }}>{row.pts}</div>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 7, padding: "0 14px 12px", flexWrap: "wrap" }}>
-                  <StatChip label="S" value={row.won} color="#34d399" />
-                  <StatChip label="U" value={row.drawn} color="#cbd5e1" />
-                  <StatChip label="N" value={row.lost} color="#f87171" />
-                  <StatChip label="Tore" value={`${row.gf}:${row.ga}`} />
-                  <StatChip label="TD" value={`${row.td > 0 ? "+" : ""}${row.td}`} color={tdColor(row.td)} />
-                </div>
-
-                <div style={{ padding: "11px 14px 13px", borderTop: "1px solid rgba(255,255,255,.06)", background: "rgba(0,0,0,.13)" }}>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {row.teams.map(team => (
-                      <span key={team} style={{
-                        maxWidth: "100%",
-                        border: "1px solid rgba(255,255,255,.08)",
-                        background: "rgba(255,255,255,.04)",
-                        color: "#cbd5e1",
-                        borderRadius: 999,
-                        padding: "6px 9px",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis"
-                      }}>{FLAGS[team] || ""} {DE[team] || team}</span>
-                    ))}
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
+        {tab === "liveTable" && (
+          <>
+            <div style={{ marginBottom: 10, color: "#fecaca", fontSize: 13, lineHeight: 1.4, background: "rgba(239,68,68,.10)", border: "1px solid rgba(239,68,68,.25)", borderRadius: 14, padding: 12 }}>
+              📈 Live-Prognose: Diese Tabelle rechnet laufende Spiele mit dem aktuellen Zwischenstand ein. Wenn kein Spiel live ist, entspricht sie der offiziellen Rangliste.
+            </div>
+            {live.length > 0 && (
+              <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+                {live.map((m, i) => <ScoreCard key={`live-table-${m.homeTeam}-${m.awayTeam}-${i}`} match={m} live />)}
+              </div>
+            )}
+            <StandingsList standings={liveProjectionStandings} liveMode officialRanks={officialRanks} />
+          </>
         )}
 
         {tab === "live" && (
