@@ -81,6 +81,13 @@ function formatDate(dateStr) {
 const rankLabel = index => index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `${index + 1}.`;
 const tdColor = value => value > 0 ? "#34d399" : value < 0 ? "#f87171" : "#94a3b8";
 
+function statusLabel(status) {
+  if (status === "IN_PLAY" || status === "LIVE") return "Live";
+  if (status === "PAUSED") return "Halbzeit";
+  if (status === "FINISHED") return "Abpfiff";
+  return status || "Geplant";
+}
+
 function StatChip({ label, value, color }) {
   return (
     <div style={{
@@ -98,7 +105,87 @@ function StatChip({ label, value, color }) {
   );
 }
 
+function TeamBlock({ team, align = "left" }) {
+  const owner = ownerOf(team);
+  return (
+    <div style={{ minWidth: 0, textAlign: align }}>
+      <strong style={{ display: "block", fontSize: 14, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {align === "right" ? `${DE[team] || team} ${FLAGS[team] || ""}` : `${FLAGS[team] || ""} ${DE[team] || team}`}
+      </strong>
+      {owner && <small style={{ color: COLORS[owner], fontWeight: 800 }}>{owner}</small>}
+    </div>
+  );
+}
+
+function ScoreCard({ match, live = false }) {
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)",
+      gap: 12,
+      alignItems: "center",
+      background: live ? "linear-gradient(135deg,rgba(239,68,68,.13),rgba(255,255,255,.04))" : "rgba(255,255,255,.04)",
+      border: live ? "1px solid rgba(239,68,68,.32)" : "1px solid rgba(255,255,255,.08)",
+      borderRadius: 16,
+      padding: 14,
+      boxShadow: live ? "0 10px 28px rgba(239,68,68,.08)" : "none",
+    }}>
+      <TeamBlock team={match.homeTeam} />
+      <div style={{ textAlign: "center", minWidth: 70 }}>
+        <div style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+          color: live ? "#fecaca" : "#94a3b8",
+          background: live ? "rgba(239,68,68,.18)" : "rgba(255,255,255,.06)",
+          border: live ? "1px solid rgba(239,68,68,.28)" : "1px solid rgba(255,255,255,.08)",
+          borderRadius: 999,
+          padding: "3px 8px",
+          fontSize: 10,
+          fontWeight: 950,
+          textTransform: "uppercase",
+          letterSpacing: ".4px",
+          marginBottom: 5,
+        }}>
+          {live && <span style={{ width: 7, height: 7, borderRadius: 99, background: "#ef4444", display: "inline-block" }} />}
+          {statusLabel(match.status)}
+        </div>
+        <strong style={{ display: "block", fontSize: 26, lineHeight: 1, letterSpacing: "-1px", color: live ? "#fff" : "#e2e8f0" }}>{match.homeGoals}:{match.awayGoals}</strong>
+        {(match.minute || match.time) && <div style={{ marginTop: 4, color: "#64748b", fontSize: 11, fontWeight: 800 }}>{match.minute ? `${match.minute}'` : `${match.time} Uhr`}</div>}
+      </div>
+      <TeamBlock team={match.awayTeam} align="right" />
+    </div>
+  );
+}
+
+function UpcomingCard({ match }) {
+  const hOwner = ownerOf(match.homeTeam);
+  const aOwner = ownerOf(match.awayTeam);
+  const isDuel = hOwner && aOwner && hOwner !== aOwner;
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)",
+      gap: 12,
+      alignItems: "center",
+      background: "rgba(255,255,255,.04)",
+      border: isDuel ? "1px solid rgba(245,158,11,.22)" : "1px solid rgba(255,255,255,.08)",
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 8
+    }}>
+      <TeamBlock team={match.homeTeam} />
+      <div style={{ textAlign: "center", color: "#94a3b8", fontWeight: 900, minWidth: 58 }}>
+        {match.time || "--:--"}<br />
+        <span style={{ fontSize: 11, color: isDuel ? "#fbbf24" : "#475569" }}>{isDuel ? "DUELL" : "VS"}</span>
+      </div>
+      <TeamBlock team={match.awayTeam} align="right" />
+    </div>
+  );
+}
+
 export default function App() {
+  const [live, setLive] = useState([]);
   const [played, setPlayed] = useState([]);
   const [upcoming, setUpcoming] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -113,6 +200,7 @@ export default function App() {
       const res = await fetch("/api/scores");
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Daten konnten nicht geladen werden.");
+      setLive(Array.isArray(data.live) ? data.live : []);
       setPlayed(Array.isArray(data.played) ? data.played : []);
       setUpcoming(Array.isArray(data.upcoming) ? data.upcoming : []);
       setUpdated(new Date());
@@ -143,7 +231,7 @@ export default function App() {
           <div style={{ minWidth: 0 }}>
             <h1 style={{ margin: 0, fontSize: "clamp(23px, 7vw, 28px)", color: "#fbbf24", letterSpacing: "-.7px" }}>⚽ WM 2026 Liga</h1>
             <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: 13, lineHeight: 1.35 }}>
-              {loading ? "Lade Daten…" : updated ? `Stand: ${updated.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr · ${played.length} Ergebnisse · ${upcoming.length} kommende Spiele` : "Bereit"}
+              {loading ? "Lade Daten…" : updated ? `Stand: ${updated.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr · ${live.length} live · ${played.length} Ergebnisse · ${upcoming.length} kommende Spiele` : "Bereit"}
             </p>
           </div>
           <button onClick={load} disabled={loading} style={{ border: "1px solid rgba(245,158,11,.35)", background: "rgba(245,158,11,.12)", color: "#fbbf24", borderRadius: 12, padding: "10px 14px", fontWeight: 800, cursor: loading ? "default" : "pointer", flexShrink: 0 }}>
@@ -154,7 +242,12 @@ export default function App() {
         {error && <div style={{ background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.35)", color: "#fca5a5", padding: 14, borderRadius: 14, marginBottom: 14 }}>❌ {error}</div>}
 
         <nav style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-          {[["standings", "🏆 Rangliste"], ["upcoming", "📅 Nächste Spiele"], ["played", "⚽ Ergebnisse"]].map(([id, label]) => (
+          {[
+            ["standings", "🏆 Rangliste"],
+            ["live", live.length > 0 ? `🔴 Live (${live.length})` : "🔴 Live"],
+            ["upcoming", "📅 Nächste Spiele"],
+            ["played", "⚽ Ergebnisse"],
+          ].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} style={{ border: "1px solid rgba(255,255,255,.1)", background: tab === id ? "rgba(245,158,11,.18)" : "rgba(255,255,255,.04)", color: tab === id ? "#fbbf24" : "#cbd5e1", borderRadius: 999, padding: "9px 13px", fontWeight: 800, cursor: "pointer", flex: "1 1 auto" }}>{label}</button>
           ))}
         </nav>
@@ -230,21 +323,26 @@ export default function App() {
           </div>
         )}
 
+        {tab === "live" && (
+          <div style={{ display: "grid", gap: 10 }}>
+            {live.length === 0 && <p style={{ color: "#94a3b8", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", padding: 14, borderRadius: 14 }}>Gerade läuft kein Spiel aus eurer Liga.</p>}
+            {live.map((m, i) => <ScoreCard key={`${m.homeTeam}-${m.awayTeam}-${i}`} match={m} live />)}
+          </div>
+        )}
+
         {tab === "upcoming" && (
           <div style={{ display: "grid", gap: 12 }}>
+            {live.length > 0 && (
+              <section style={{ marginBottom: 6 }}>
+                <h2 style={{ fontSize: 15, color: "#ef4444", margin: "0 0 8px" }}>🔴 Läuft gerade</h2>
+                <div style={{ display: "grid", gap: 8 }}>{live.map((m, i) => <ScoreCard key={`${m.homeTeam}-${m.awayTeam}-${i}`} match={m} live />)}</div>
+              </section>
+            )}
             {Object.keys(upcomingByDate).length === 0 && <p style={{ color: "#94a3b8" }}>Keine kommenden Spiele gefunden.</p>}
             {Object.entries(upcomingByDate).map(([date, matches]) => (
               <section key={date}>
                 <h2 style={{ fontSize: 15, color: "#fbbf24" }}>{formatDate(date)}</h2>
-                {matches.map((m, i) => {
-                  const hOwner = ownerOf(m.homeTeam);
-                  const aOwner = ownerOf(m.awayTeam);
-                  return <div key={`${date}-${i}`} style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: 14, marginBottom: 8 }}>
-                    <div><strong>{FLAGS[m.homeTeam]} {DE[m.homeTeam] || m.homeTeam}</strong><br />{hOwner && <small style={{ color: COLORS[hOwner] }}>{hOwner}</small>}</div>
-                    <div style={{ textAlign: "center", color: "#94a3b8", fontWeight: 800 }}>{m.time || "--:--"}<br />VS</div>
-                    <div style={{ textAlign: "right" }}><strong>{DE[m.awayTeam] || m.awayTeam} {FLAGS[m.awayTeam]}</strong><br />{aOwner && <small style={{ color: COLORS[aOwner] }}>{aOwner}</small>}</div>
-                  </div>;
-                })}
+                {matches.map((m, i) => <UpcomingCard key={`${date}-${i}`} match={m} />)}
               </section>
             ))}
           </div>
@@ -253,13 +351,7 @@ export default function App() {
         {tab === "played" && (
           <div style={{ display: "grid", gap: 10 }}>
             {played.length === 0 && <p style={{ color: "#94a3b8" }}>Noch keine Ergebnisse verfügbar.</p>}
-            {played.map((m, i) => (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: 14 }}>
-                <div><strong>{FLAGS[m.homeTeam]} {DE[m.homeTeam] || m.homeTeam}</strong><br /><small style={{ color: COLORS[ownerOf(m.homeTeam)] }}>{ownerOf(m.homeTeam)}</small></div>
-                <strong style={{ fontSize: 24 }}>{m.homeGoals}:{m.awayGoals}</strong>
-                <div style={{ textAlign: "right" }}><strong>{DE[m.awayTeam] || m.awayTeam} {FLAGS[m.awayTeam]}</strong><br /><small style={{ color: COLORS[ownerOf(m.awayTeam)] }}>{ownerOf(m.awayTeam)}</small></div>
-              </div>
-            ))}
+            {played.map((m, i) => <ScoreCard key={`${m.homeTeam}-${m.awayTeam}-${i}`} match={m} />)}
           </div>
         )}
       </section>
