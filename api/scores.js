@@ -42,6 +42,9 @@ const TEAM_ALIASES = {
   "new zealand": "New Zealand",
 };
 
+const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED", "LIVE"]);
+const BLOCKED_STATUSES = new Set(["CANCELLED", "POSTPONED", "SUSPENDED"]);
+
 function normalizeTeamName(name) {
   if (!name) return "";
   const cleaned = String(name).trim();
@@ -85,24 +88,44 @@ function getGroup(match) {
   return String(raw).replace(/^GROUP[_\s-]*/i, "").replace(/^GRUPPE[_\s-]*/i, "");
 }
 
+function pickNumber(...values) {
+  for (const value of values) {
+    if (Number.isInteger(value)) return value;
+    const parsed = Number(value);
+    if (Number.isInteger(parsed)) return parsed;
+  }
+  return null;
+}
+
 function transformMatch(match) {
   const homeTeam = getTeamName(match.homeTeam);
   const awayTeam = getTeamName(match.awayTeam);
   const { date, time } = getBerlinDateAndTime(match.utcDate);
+  const score = match.score || {};
+
   return {
     homeTeam,
     awayTeam,
-    homeGoals: match.score?.fullTime?.home,
-    awayGoals: match.score?.fullTime?.away,
+    homeGoals: pickNumber(score.fullTime?.home, score.regularTime?.home, score.home),
+    awayGoals: pickNumber(score.fullTime?.away, score.regularTime?.away, score.away),
     date,
     time,
     group: getGroup(match),
-    status: match.status,
+    status: match.status || "",
+    minute: match.minute || match.matchTime || null,
   };
 }
 
 function isKnownSelectedMatch(m) {
   return ALL_TEAMS.has(m.homeTeam) && ALL_TEAMS.has(m.awayTeam);
+}
+
+function toScoreMatch({ homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, status, minute }) {
+  return { homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, status, minute };
+}
+
+function toUpcomingMatch({ homeTeam, awayTeam, date, time, group, status }) {
+  return { homeTeam, awayTeam, date, time, group, status };
 }
 
 export default async function handler(req, res) {
@@ -134,20 +157,30 @@ export default async function handler(req, res) {
 
     const matches = Array.isArray(data?.matches) ? data.matches : [];
     const transformed = matches.map(transformMatch).filter(isKnownSelectedMatch);
-    const played = transformed
-      .filter(m => m.status === "FINISHED" && Number.isInteger(m.homeGoals) && Number.isInteger(m.awayGoals))
-      .map(({ homeTeam, awayTeam, homeGoals, awayGoals }) => ({ homeTeam, awayTeam, homeGoals, awayGoals }));
-    const upcoming = transformed
-      .filter(m => m.status !== "FINISHED" && m.status !== "CANCELLED")
-      .map(({ homeTeam, awayTeam, date, time, group }) => ({ homeTeam, awayTeam, date, time, group }))
+
+    const live = transformed
+      .filter(m => LIVE_STATUSES.has(m.status) && Number.isInteger(m.homeGoals) && Number.isInteger(m.awayGoals))
+      .map(toScoreMatch)
       .sort((a, b) => `${a.date || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999-99-99"} ${b.time || "99:99"}`));
 
-    res.setHeader("Cache-Control", "s-maxage=900, stale-while-revalidate=3600");
+    const played = transformed
+      .filter(m => m.status === "FINISHED" && Number.isInteger(m.homeGoals) && Number.isInteger(m.awayGoals))
+      .map(({ homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, status }) => ({ homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, status }))
+      .sort((a, b) => `${b.date || "0000-00-00"} ${b.time || "00:00"}`.localeCompare(`${a.date || "0000-00-00"} ${a.time || "00:00"}`));
+
+    const upcoming = transformed
+      .filter(m => m.status !== "FINISHED" && !LIVE_STATUSES.has(m.status) && !BLOCKED_STATUSES.has(m.status))
+      .map(toUpcomingMatch)
+      .sort((a, b) => `${a.date || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999-99-99"} ${b.time || "99:99"}`));
+
+    const cacheHeader = live.length > 0 ? "s-maxage=30, stale-while-revalidate=60" : "s-maxage=300, stale-while-revalidate=900";
+    res.setHeader("Cache-Control", cacheHeader);
     return res.status(200).json({
       source: "football-data.org",
       competition: "WC",
       season: 2026,
       fetchedAt: new Date().toISOString(),
+      live,
       played,
       upcoming,
     });
