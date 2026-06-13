@@ -128,11 +128,69 @@
     return Object.keys(ALIASES).find(alias => normalized === alias || normalized.endsWith(` ${alias}`) || normalized.startsWith(`${alias} `)) ? ALIASES[Object.keys(ALIASES).find(alias => normalized === alias || normalized.endsWith(` ${alias}`) || normalized.startsWith(`${alias} `))] : null;
   };
 
+  const ensureStyles = () => {
+    if (document.getElementById("fifa-rank-badge-styles")) return;
+    const style = document.createElement("style");
+    style.id = "fifa-rank-badge-styles";
+    style.textContent = `
+      .fifa-ranked-team {
+        display: inline-flex !important;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        max-width: 100%;
+      }
+
+      .fifa-rank-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        border: 1px solid rgba(148,163,184,.22);
+        background: rgba(148,163,184,.12);
+        color: #cbd5e1;
+        border-radius: 999px;
+        padding: 2px 6px;
+        font-size: 10px;
+        font-weight: 950;
+        line-height: 1;
+        letter-spacing: .1px;
+      }
+
+      .fifa-team-name {
+        min-width: 0;
+        max-width: 100%;
+        overflow: visible;
+        text-overflow: clip;
+        white-space: normal;
+        line-height: 1.15;
+      }
+
+      @media (max-width: 640px) {
+        .fifa-ranked-team {
+          flex-direction: column;
+          gap: 2px;
+          align-items: flex-start;
+          justify-content: center;
+        }
+
+        .fifa-ranked-team[data-fifa-align="right"] {
+          align-items: flex-end;
+        }
+
+        .fifa-rank-badge {
+          padding: 2px 5px;
+          font-size: 9px;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  };
+
   const makeBadge = rank => {
     const badge = document.createElement("span");
     badge.className = "fifa-rank-badge";
     badge.textContent = `#${rank}`;
-    badge.style.cssText = "display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;border:1px solid rgba(148,163,184,.22);background:rgba(148,163,184,.12);color:#cbd5e1;border-radius:999px;padding:2px 6px;font-size:10px;font-weight:950;line-height:1;letter-spacing:.1px;";
     return badge;
   };
 
@@ -148,21 +206,21 @@
 
       const parentAlign = window.getComputedStyle(strong.parentElement || strong).textAlign;
       const original = document.createElement("span");
+      original.className = "fifa-team-name";
       original.textContent = originalText;
-      original.style.cssText = "min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
 
       strong.textContent = "";
       strong.dataset.fifaRankApplied = "true";
+      strong.dataset.fifaAlign = parentAlign === "right" ? "right" : "left";
       strong.title = `${originalText} · FIFA-Weltrangliste #${rank}`;
-      strong.style.display = "flex";
-      strong.style.alignItems = "center";
-      strong.style.gap = "6px";
+      strong.classList.add("fifa-ranked-team");
       strong.style.justifyContent = parentAlign === "right" ? "flex-end" : "flex-start";
       strong.append(makeBadge(rank), original);
     });
   };
 
   const boot = () => {
+    ensureStyles();
     applyRanks();
     const root = document.getElementById("root") || document.body;
     const observer = new MutationObserver(() => window.requestAnimationFrame(applyRanks));
