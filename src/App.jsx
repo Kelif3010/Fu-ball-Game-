@@ -63,6 +63,8 @@ const SUB_TABS = {
     { id: "ergebnisse", label: "Ergebnisse" },
   ],
   stats: [
+    { id: "max", label: "Max Punkte" },
+    { id: "form", label: "Form" },
     { id: "h2h", label: "Head-to-Head" },
   ],
 };
@@ -450,12 +452,14 @@ function GamesPanel({ subTab, upcomingByDate, played, live }) {
   </div>;
 }
 
-function StatsPanel({ maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson }) {
-  return <div className="card-stack">
-    <StatsMaxPointsCard rows={maxPossibleRows} />
-    <StatsFormCard rows={formRows} />
-    <HeadToHead stats={h2hStats} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson} />
-  </div>;
+function StatsPanel({ subTab, maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson }) {
+  if (subTab === "form") {
+    return <StatsFormCard rows={formRows} />;
+  }
+  if (subTab === "h2h") {
+    return <HeadToHead stats={h2hStats} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson} />;
+  }
+  return <StatsMaxPointsCard rows={maxPossibleRows} />;
 }
 
 function getPersonMatches(person, live, upcoming) {
@@ -842,7 +846,7 @@ export default function App() {
   const [refreshSeconds, setRefreshSeconds] = useState(DEFAULT_REFRESH_SECONDS);
   const [secondsLeft, setSecondsLeft] = useState(DEFAULT_REFRESH_SECONDS);
   const [tab, setTab] = useState("liga");
-  const [subTabs, setSubTabs] = useState({ live: "laufend", spiele: "demnaechst", stats: "h2h" });
+  const [subTabs, setSubTabs] = useState({ live: "laufend", spiele: "demnaechst", stats: "max" });
   const [openPerson, setOpenPerson] = useState("");
   const [selectedPerson, setSelectedPerson] = useState("Ken");
   const [selectedH2hPerson, setSelectedH2hPerson] = useState("Ken");
@@ -959,7 +963,7 @@ export default function App() {
   } else if (tab === "spiele") {
     screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} />;
   } else if (tab === "stats") {
-    screen = <StatsPanel maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} />;
+    screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} />;
   } else if (tab === "mein") {
     screen = <MyPanel selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} standings={standings} liveProjectionStandings={liveProjectionStandings} live={live} upcoming={upcoming} played={played} />;
   }
