@@ -1,7 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { COLORS, displayTeamName } from "./App";
-
-const PEOPLE = Object.keys(COLORS);
 
 function buildSelectedStats(stats, selectedPerson) {
   return (Array.isArray(stats) ? stats : [])
@@ -22,9 +20,23 @@ function buildSelectedStats(stats, selectedPerson) {
 }
 
 export default function HeadToHead({ stats, selectedPerson, onSelectPerson }) {
-  const [internalPerson, setInternalPerson] = useState(PEOPLE[0] || "");
+  const participants = useMemo(() => {
+    const names = new Set();
+    (Array.isArray(stats) ? stats : []).forEach(pair => {
+      if (pair?.p1) names.add(pair.p1);
+      if (pair?.p2) names.add(pair.p2);
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [stats]);
+  const [internalPerson, setInternalPerson] = useState("");
   const activePerson = selectedPerson || internalPerson;
   const setPerson = onSelectPerson || setInternalPerson;
+
+  useEffect(() => {
+    if (!selectedPerson && !internalPerson && participants.length > 0) {
+      setInternalPerson(participants[0]);
+    }
+  }, [internalPerson, participants, selectedPerson]);
 
   const rows = useMemo(() => buildSelectedStats(stats, activePerson), [stats, activePerson]);
 
@@ -48,7 +60,7 @@ export default function HeadToHead({ stats, selectedPerson, onSelectPerson }) {
           <span className="analysis-badge">{rows.length} Duelle</span>
         </div>
         <div className="person-selector h2h-selector">
-          {PEOPLE.map(person => (
+          {participants.map(person => (
             <button
               key={person}
               className={activePerson === person ? "active" : ""}
