@@ -63,8 +63,6 @@ const SUB_TABS = {
     { id: "ergebnisse", label: "Ergebnisse" },
   ],
   stats: [
-    { id: "verlauf", label: "Punkte-Verlauf" },
-    { id: "karten", label: "Karten" },
     { id: "h2h", label: "Head-to-Head" },
   ],
 };
@@ -160,43 +158,6 @@ function matchSortAsc(a, b) {
 
 function matchSortDesc(a, b) {
   return `${b.date || "0000-00-00"} ${b.time || "00:00"}`.localeCompare(`${a.date || "0000-00-00"} ${a.time || "00:00"}`);
-}
-
-function buildPointsHistory(matches, people) {
-  const totals = Object.fromEntries(Object.keys(PARTICIPANTS).map(person => [person, 0]));
-  const history = [{ label: "Start", ...totals }];
-  [...matches].sort(matchSortAsc).forEach((match, index) => {
-    const hg = Number(match.homeGoals);
-    const ag = Number(match.awayGoals);
-    if (!Number.isFinite(hg) || !Number.isFinite(ag)) return;
-    const hOwner = ownerOf(match.homeTeam);
-    const aOwner = ownerOf(match.awayTeam);
-    const hPts = hg > ag ? 3 : hg === ag ? 1 : 0;
-    const aPts = ag > hg ? 3 : hg === ag ? 1 : 0;
-    if (hOwner) totals[hOwner] += hPts;
-    if (aOwner) totals[aOwner] += aPts;
-    history.push({ label: String(index + 1), ...totals });
-  });
-  return history.map(item => {
-    const filtered = { label: item.label };
-    people.forEach(person => { filtered[person] = item[person] || 0; });
-    return filtered;
-  });
-}
-
-function buildCardStats(matchCenters) {
-  const stats = Object.fromEntries(Object.keys(PARTICIPANTS).map(person => [person, { person, yellow: 0, red: 0 }]));
-  Object.values(matchCenters || {}).forEach(center => {
-    const events = Array.isArray(center?.events) ? center.events : [];
-    events.forEach(event => {
-      const raw = `${event?.type || ""} ${event?.detail || ""}`.toLowerCase();
-      const person = ownerOf(event?.team);
-      if (!person || !stats[person]) return;
-      if (raw.includes("yellow")) stats[person].yellow += 1;
-      if (raw.includes("red")) stats[person].red += 1;
-    });
-  });
-  return Object.values(stats).sort((a, b) => (b.red * 3 + b.yellow) - (a.red * 3 + a.yellow) || a.person.localeCompare(b.person));
 }
 
 function buildHeadToHeadStats(playedMatches) {
@@ -489,51 +450,8 @@ function GamesPanel({ subTab, upcomingByDate, played, live }) {
   </div>;
 }
 
-function PointsChart({ history, people }) {
-  if (history.length <= 1) return <EmptyState title="Noch kein Verlauf" text="Der Punkte-Verlauf entsteht, sobald mehrere Ergebnisse vorhanden sind." />;
-  const width = 310;
-  const height = 155;
-  const pad = { left: 30, right: 15, top: 18, bottom: 28 };
-  const max = Math.max(1, ...history.flatMap(point => people.map(person => point[person] || 0)));
-  const xFor = index => pad.left + ((width - pad.left - pad.right) * index) / Math.max(1, history.length - 1);
-  const yFor = value => height - pad.bottom - ((height - pad.top - pad.bottom) * value) / max;
-  return <div className="chart-card">
-    <div className="chart-title">Punkte-Verlauf</div>
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Punkte-Verlauf der Top Teilnehmer">
-      <line x1={pad.left} y1={height - pad.bottom} x2={width - pad.right} y2={height - pad.bottom} stroke="rgba(255,255,255,.08)" />
-      <line x1={pad.left} y1={pad.top} x2={pad.left} y2={height - pad.bottom} stroke="rgba(255,255,255,.08)" />
-      <line x1={pad.left} y1={yFor(max / 2)} x2={width - pad.right} y2={yFor(max / 2)} stroke="rgba(255,255,255,.05)" strokeDasharray="4 3" />
-      <text x={pad.left - 6} y={pad.top + 4} textAnchor="end" fill="#475569" fontSize="9">{max}</text>
-      <text x={pad.left - 6} y={height - pad.bottom + 4} textAnchor="end" fill="#475569" fontSize="9">0</text>
-      {people.map(person => {
-        const points = history.map((point, index) => `${xFor(index)},${yFor(point[person] || 0)}`).join(" ");
-        const last = history[history.length - 1];
-        return <g key={person}>
-          <polyline points={points} fill="none" stroke={COLORS[person]} strokeWidth={person === people[0] ? 2.8 : 2} strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx={xFor(history.length - 1)} cy={yFor(last[person] || 0)} r={person === people[0] ? 4 : 3.4} fill={COLORS[person]} />
-        </g>;
-      })}
-    </svg>
-    <div className="chart-legend">{people.map(person => <span key={person}><i style={{ background: COLORS[person] }} />{person}</span>)}</div>
-  </div>;
-}
-
-function CardsPanel({ cardStats }) {
-  const hasCards = cardStats.some(item => item.yellow || item.red);
-  if (!hasCards) return <EmptyState title="Noch keine Karten-Daten" text="Gelbe/rote Karten werden hier aggregiert, sobald Match-Center-Events geladen wurden." />;
-  return <div className="cards-ranking">
-    {cardStats.map((item, index) => <div className="card-ranking-row" key={item.person}>
-      <span>{index + 1}</span>
-      <strong style={{ color: COLORS[item.person] }}>{item.person}</strong>
-      <div><em>🟨 {item.yellow}</em><b>🟥 {item.red}</b></div>
-    </div>)}
-  </div>;
-}
-
-function StatsPanel({ subTab, history, chartPeople, cardStats, h2hStats }) {
-  if (subTab === "karten") return <CardsPanel cardStats={cardStats} />;
-  if (subTab === "h2h") return <HeadToHead stats={h2hStats} />;
-  return <PointsChart history={history} people={chartPeople} />;
+function StatsPanel({ h2hStats, selectedPerson, setSelectedPerson }) {
+  return <HeadToHead stats={h2hStats} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson} />;
 }
 
 function getPersonMatches(person, live, upcoming) {
@@ -830,7 +748,7 @@ const STYLES = `
 `;
 
 const ANALYSIS_STYLES = `
-.analysis-card{display:grid;gap:10px}.analysis-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.analysis-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.analysis-head p{margin:4px 0 0;color:#cbd5e1;font-size:12px;line-height:1.4}.analysis-badge{display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 9px;border-radius:999px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.1);color:#fbbf24;font-size:10px;font-weight:950;white-space:nowrap}.analysis-pills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.analysis-list{display:grid;gap:8px}.analysis-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}.analysis-row:first-child{padding-top:0;border-top:0}.analysis-row span{min-width:0;color:#94a3b8;font-size:11px;font-weight:800}.analysis-row strong{min-width:0;text-align:right;color:#e2e8f0;font-size:11px;font-weight:900;line-height:1.35}.analysis-row strong.ok{color:#34d399}.analysis-row strong.warn{color:#fbbf24}.analysis-chip-row{display:flex;flex-wrap:wrap;gap:6px}.analysis-chip{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:999px;padding:5px 7px;color:#e2e8f0;font-size:10px;font-weight:800;white-space:nowrap}.analysis-chip.good{border-color:rgba(52,211,153,.24);background:rgba(52,211,153,.08);color:#86efac}.analysis-chip.muted{color:#94a3b8}.form-list{display:grid;gap:8px}.form-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.form-row:first-of-type{padding-top:0;border-top:0}.form-name{min-width:0}.form-name strong{display:block;color:#e2e8f0;font-size:12px;font-weight:900;line-height:1.2}.form-name small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.form-results{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}.form-result{min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11px;line-height:1}.form-result.win{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}.form-result.loss{border-color:rgba(248,113,113,.28);background:rgba(248,113,113,.08)}.form-result.draw{border-color:rgba(251,191,36,.22);background:rgba(251,191,36,.08)}.form-result.muted{color:#64748b;padding:0 6px;min-width:auto}.form-empty{margin:0;color:#94a3b8;font-size:12px;line-height:1.4}@media (min-width:760px){.analysis-pills{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.analysis-card{display:grid;gap:10px}.analysis-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.analysis-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.analysis-head p{margin:4px 0 0;color:#cbd5e1;font-size:12px;line-height:1.4}.analysis-badge{display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 9px;border-radius:999px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.1);color:#fbbf24;font-size:10px;font-weight:950;white-space:nowrap}.analysis-pills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.analysis-list{display:grid;gap:8px}.analysis-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}.analysis-row:first-child{padding-top:0;border-top:0}.analysis-row span{min-width:0;color:#94a3b8;font-size:11px;font-weight:800}.analysis-row strong{min-width:0;text-align:right;color:#e2e8f0;font-size:11px;font-weight:900;line-height:1.35}.analysis-row strong.ok{color:#34d399}.analysis-row strong.warn{color:#fbbf24}.analysis-chip-row{display:flex;flex-wrap:wrap;gap:6px}.analysis-chip{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:999px;padding:5px 7px;color:#e2e8f0;font-size:10px;font-weight:800;white-space:nowrap}.analysis-chip.good{border-color:rgba(52,211,153,.24);background:rgba(52,211,153,.08);color:#86efac}.analysis-chip.muted{color:#94a3b8}.form-list{display:grid;gap:8px}.form-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.form-row:first-of-type{padding-top:0;border-top:0}.form-name{min-width:0}.form-name strong{display:block;color:#e2e8f0;font-size:12px;font-weight:900;line-height:1.2}.form-name small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.form-results{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}.form-result{min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11px;line-height:1}.form-result.win{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}.form-result.loss{border-color:rgba(248,113,113,.28);background:rgba(248,113,113,.08)}.form-result.draw{border-color:rgba(251,191,36,.22);background:rgba(251,191,36,.08)}.form-result.muted{color:#64748b;padding:0 6px;min-width:auto}.form-empty{margin:0;color:#94a3b8;font-size:12px;line-height:1.4}.h2h-selector-wrap{display:grid;gap:9px}.h2h-selector-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.h2h-selector-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.h2h-selector-head p{margin:4px 0 0;color:#94a3b8;font-size:12px;line-height:1.35}.h2h-selector{grid-template-columns:repeat(2,minmax(0,1fr))}@media (min-width:760px){.analysis-pills{grid-template-columns:repeat(4,minmax(0,1fr))}.h2h-selector{grid-template-columns:repeat(8,minmax(0,1fr))}}
 `;
 
 export default function App() {
@@ -843,9 +761,10 @@ export default function App() {
   const [refreshSeconds, setRefreshSeconds] = useState(DEFAULT_REFRESH_SECONDS);
   const [secondsLeft, setSecondsLeft] = useState(DEFAULT_REFRESH_SECONDS);
   const [tab, setTab] = useState("liga");
-  const [subTabs, setSubTabs] = useState({ live: "laufend", spiele: "demnaechst", stats: "verlauf" });
+  const [subTabs, setSubTabs] = useState({ live: "laufend", spiele: "demnaechst", stats: "h2h" });
   const [openPerson, setOpenPerson] = useState("");
   const [selectedPerson, setSelectedPerson] = useState("Ken");
+  const [selectedH2hPerson, setSelectedH2hPerson] = useState("Ken");
   const [expandedMatchId, setExpandedMatchId] = useState(null);
   const [matchCenters, setMatchCenters] = useState({});
   const [matchCenterLoading, setMatchCenterLoading] = useState({});
@@ -942,9 +861,6 @@ export default function App() {
     acc[key].sort(matchSortAsc);
     return acc;
   }, {}), [upcoming]);
-  const chartPeople = useMemo(() => standings.slice(0, 4).map(row => row.person), [standings]);
-  const pointsHistory = useMemo(() => buildPointsHistory([...played].sort(matchSortDesc), chartPeople), [played, chartPeople]);
-  const cardStats = useMemo(() => buildCardStats(matchCenters), [matchCenters]);
   const h2hStats = useMemo(() => buildHeadToHeadStats(played), [played]);
 
   const activeSubTab = subTabs[tab];
@@ -960,7 +876,7 @@ export default function App() {
   } else if (tab === "spiele") {
     screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} />;
   } else if (tab === "stats") {
-    screen = <StatsPanel subTab={activeSubTab} history={pointsHistory} chartPeople={chartPeople} cardStats={cardStats} h2hStats={h2hStats} />;
+    screen = <StatsPanel h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} />;
   } else if (tab === "mein") {
     screen = <MyPanel selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} standings={standings} liveProjectionStandings={liveProjectionStandings} live={live} upcoming={upcoming} played={played} />;
   }
