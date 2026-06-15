@@ -450,8 +450,12 @@ function GamesPanel({ subTab, upcomingByDate, played, live }) {
   </div>;
 }
 
-function StatsPanel({ h2hStats, selectedPerson, setSelectedPerson }) {
-  return <HeadToHead stats={h2hStats} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson} />;
+function StatsPanel({ maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson }) {
+  return <div className="card-stack">
+    <StatsMaxPointsCard rows={maxPossibleRows} />
+    <StatsFormCard rows={formRows} />
+    <HeadToHead stats={h2hStats} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson} />
+  </div>;
 }
 
 function getPersonMatches(person, live, upcoming) {
@@ -476,6 +480,27 @@ function buildOpenMatchMap(live, upcoming) {
   return map;
 }
 
+function buildMaxPossibleRows(standings, live, upcoming) {
+  const openMap = buildOpenMatchMap(live, upcoming);
+  return standings.map((row, index) => {
+    const openCount = openMap[row.person]?.length || 0;
+    return {
+      ...row,
+      rank: index + 1,
+      openCount,
+      maxPossiblePoints: row.pts + (openCount * 3),
+    };
+  });
+}
+
+function buildFormComparisonRows(standings, played) {
+  return standings.map((row, index) => ({
+    ...row,
+    rank: index + 1,
+    results: getLastResultsForPerson(row.person, played),
+  }));
+}
+
 function getLastResultsForPerson(person, played, limit = 5) {
   return [...played]
     .sort(matchSortDesc)
@@ -492,7 +517,7 @@ function getLastResultsForPerson(person, played, limit = 5) {
         else if (ag > hg) emoji = awayOwner === person ? "✅" : "❌";
       }
       return { emoji, match };
-    });
+  });
 }
 
 function buildFormCurveRows(selectedPerson, standings, analysis) {
@@ -513,6 +538,62 @@ function buildFormCurveRows(selectedPerson, standings, analysis) {
     }
   }
   return unique;
+}
+
+function StatsMaxPointsCard({ rows }) {
+  if (!rows.length) return <EmptyState title="Keine Punkte-Daten" text="Sobald Ergebnisse geladen sind, erscheint hier die Maximalpunkte-Ansicht." />;
+  return <article className="what-card analysis-card stats-card">
+    <div className="analysis-head">
+      <div>
+        <h3>📈 Maximale mögliche Punkte</h3>
+        <p>Aktuelle Punkte plus alle offenen Spiele mit 3 Punkten pro Sieg.</p>
+      </div>
+      <span className="analysis-badge">Alle Teilnehmer</span>
+    </div>
+    <div className="stats-list">
+      {rows.map(row => (
+        <div className="stats-row" key={row.person}>
+          <div className="stats-row-main">
+            <span className="stats-rank">{rankLabel(row.rank - 1)}</span>
+            <div className="stats-name">
+              <strong style={{ color: COLORS[row.person] }}>{row.person}</strong>
+              <small>{row.pts} aktuell · {row.openCount} offen</small>
+            </div>
+          </div>
+          <div className="stats-points">
+            <strong>{row.maxPossiblePoints}</strong>
+            <small>max</small>
+          </div>
+        </div>
+      ))}
+    </div>
+  </article>;
+}
+
+function StatsFormCard({ rows }) {
+  if (!rows.length) return <EmptyState title="Keine Formdaten" text="Sobald Spiele gespielt wurden, erscheint hier die Teamform." />;
+  return <article className="what-card analysis-card stats-card">
+    <div className="analysis-head">
+      <div>
+        <h3>🔥 Form der letzten 5 Spiele</h3>
+        <p>Vergleich der letzten Ergebnisse über alle Teilnehmer hinweg.</p>
+      </div>
+      <span className="analysis-badge">Letzte 5</span>
+    </div>
+    <div className="stats-form-grid">
+      {rows.map(row => (
+        <div className="stats-form-row" key={row.person}>
+          <div className="stats-form-head">
+            <strong style={{ color: COLORS[row.person] }}>{row.person}</strong>
+            <small>{row.results.length ? `${row.results.length} Spiele` : "Keine Spiele"}</small>
+          </div>
+          <div className="form-results">
+            {row.results.length > 0 ? row.results.map(({ emoji, match }, index) => <span key={`${row.person}-${match.id || index}-${index}`} className={`form-result ${emoji === "✅" ? "win" : emoji === "❌" ? "loss" : "draw"}`} title={`${displayTeamName(match.homeTeam)} vs ${displayTeamName(match.awayTeam)}`}>{emoji}</span>) : <span className="form-result muted">-</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  </article>;
 }
 
 function buildMyAnalysis(person, standings, liveProjectionStandings, live, upcoming) {
@@ -748,7 +829,7 @@ const STYLES = `
 `;
 
 const ANALYSIS_STYLES = `
-.analysis-card{display:grid;gap:10px}.analysis-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.analysis-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.analysis-head p{margin:4px 0 0;color:#cbd5e1;font-size:12px;line-height:1.4}.analysis-badge{display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 9px;border-radius:999px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.1);color:#fbbf24;font-size:10px;font-weight:950;white-space:nowrap}.analysis-pills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.analysis-list{display:grid;gap:8px}.analysis-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}.analysis-row:first-child{padding-top:0;border-top:0}.analysis-row span{min-width:0;color:#94a3b8;font-size:11px;font-weight:800}.analysis-row strong{min-width:0;text-align:right;color:#e2e8f0;font-size:11px;font-weight:900;line-height:1.35}.analysis-row strong.ok{color:#34d399}.analysis-row strong.warn{color:#fbbf24}.analysis-chip-row{display:flex;flex-wrap:wrap;gap:6px}.analysis-chip{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:999px;padding:5px 7px;color:#e2e8f0;font-size:10px;font-weight:800;white-space:nowrap}.analysis-chip.good{border-color:rgba(52,211,153,.24);background:rgba(52,211,153,.08);color:#86efac}.analysis-chip.muted{color:#94a3b8}.form-list{display:grid;gap:8px}.form-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.form-row:first-of-type{padding-top:0;border-top:0}.form-name{min-width:0}.form-name strong{display:block;color:#e2e8f0;font-size:12px;font-weight:900;line-height:1.2}.form-name small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.form-results{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}.form-result{min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11px;line-height:1}.form-result.win{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}.form-result.loss{border-color:rgba(248,113,113,.28);background:rgba(248,113,113,.08)}.form-result.draw{border-color:rgba(251,191,36,.22);background:rgba(251,191,36,.08)}.form-result.muted{color:#64748b;padding:0 6px;min-width:auto}.form-empty{margin:0;color:#94a3b8;font-size:12px;line-height:1.4}.h2h-selector-wrap{display:grid;gap:9px}.h2h-selector-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.h2h-selector-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.h2h-selector-head p{margin:4px 0 0;color:#94a3b8;font-size:12px;line-height:1.35}.h2h-selector{grid-template-columns:repeat(4,minmax(0,1fr))}@media (min-width:760px){.analysis-pills{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.analysis-card{display:grid;gap:10px}.analysis-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.analysis-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.analysis-head p{margin:4px 0 0;color:#cbd5e1;font-size:12px;line-height:1.4}.analysis-badge{display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 9px;border-radius:999px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.1);color:#fbbf24;font-size:10px;font-weight:950;white-space:nowrap}.analysis-pills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.analysis-list{display:grid;gap:8px}.analysis-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}.analysis-row:first-child{padding-top:0;border-top:0}.analysis-row span{min-width:0;color:#94a3b8;font-size:11px;font-weight:800}.analysis-row strong{min-width:0;text-align:right;color:#e2e8f0;font-size:11px;font-weight:900;line-height:1.35}.analysis-row strong.ok{color:#34d399}.analysis-row strong.warn{color:#fbbf24}.analysis-chip-row{display:flex;flex-wrap:wrap;gap:6px}.analysis-chip{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:999px;padding:5px 7px;color:#e2e8f0;font-size:10px;font-weight:800;white-space:nowrap}.analysis-chip.good{border-color:rgba(52,211,153,.24);background:rgba(52,211,153,.08);color:#86efac}.analysis-chip.muted{color:#94a3b8}.form-list{display:grid;gap:8px}.form-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.form-row:first-of-type{padding-top:0;border-top:0}.form-name{min-width:0}.form-name strong{display:block;color:#e2e8f0;font-size:12px;font-weight:900;line-height:1.2}.form-name small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.form-results{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}.form-result{min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11px;line-height:1}.form-result.win{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}.form-result.loss{border-color:rgba(248,113,113,.28);background:rgba(248,113,113,.08)}.form-result.draw{border-color:rgba(251,191,36,.22);background:rgba(251,191,36,.08)}.form-result.muted{color:#64748b;padding:0 6px;min-width:auto}.form-empty{margin:0;color:#94a3b8;font-size:12px;line-height:1.4}.stats-card{display:grid;gap:10px}.stats-list{display:grid;gap:7px}.stats-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.stats-row:first-of-type{padding-top:0;border-top:0}.stats-row-main{display:flex;align-items:center;gap:8px;min-width:0}.stats-rank{width:26px;text-align:center;font-size:12px;font-weight:950;color:#475569;flex-shrink:0}.stats-name{min-width:0}.stats-name strong{display:block;font-size:12px;font-weight:900;line-height:1.2}.stats-name small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.stats-points{text-align:right;flex-shrink:0}.stats-points strong{display:block;color:#fbbf24;font-size:18px;line-height:1;font-weight:950}.stats-points small{display:block;margin-top:2px;color:#64748b;font-size:9px;font-weight:900;text-transform:uppercase}.stats-form-grid{display:grid;gap:7px}.stats-form-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.stats-form-row:first-of-type{padding-top:0;border-top:0}.stats-form-head{min-width:0}.stats-form-head strong{display:block;font-size:12px;font-weight:900;line-height:1.2}.stats-form-head small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.h2h-selector-wrap{display:grid;gap:9px}.h2h-selector-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.h2h-selector-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.h2h-selector-head p{margin:4px 0 0;color:#94a3b8;font-size:12px;line-height:1.35}.h2h-selector{grid-template-columns:repeat(4,minmax(0,1fr))}@media (min-width:760px){.analysis-pills{grid-template-columns:repeat(4,minmax(0,1fr))}}
 `;
 
 export default function App() {
@@ -861,6 +942,8 @@ export default function App() {
     acc[key].sort(matchSortAsc);
     return acc;
   }, {}), [upcoming]);
+  const statsMaxPossibleRows = useMemo(() => buildMaxPossibleRows(standings, live, upcoming), [standings, live, upcoming]);
+  const statsFormRows = useMemo(() => buildFormComparisonRows(standings, played), [standings, played]);
   const h2hStats = useMemo(() => buildHeadToHeadStats(played), [played]);
 
   const activeSubTab = subTabs[tab];
@@ -876,7 +959,7 @@ export default function App() {
   } else if (tab === "spiele") {
     screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} />;
   } else if (tab === "stats") {
-    screen = <StatsPanel h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} />;
+    screen = <StatsPanel maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} />;
   } else if (tab === "mein") {
     screen = <MyPanel selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} standings={standings} liveProjectionStandings={liveProjectionStandings} live={live} upcoming={upcoming} played={played} />;
   }
