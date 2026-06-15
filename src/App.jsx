@@ -762,7 +762,7 @@ function PersonSelector({ selected, onSelect }) {
   return <div className="person-selector">{Object.keys(PARTICIPANTS).map(person => <button key={person} className={selected === person ? "active" : ""} onClick={() => onSelect(person)} style={{ "--accent": COLORS[person] }}>{person}</button>)}</div>;
 }
 
-function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionStandings, live, upcoming }) {
+function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionStandings, live, upcoming, played }) {
   const selectedRank = standings.findIndex(row => row.person === selectedPerson);
   const row = standings[selectedRank] || standings[0];
   const analysis = buildMyAnalysis(row?.person, standings, liveProjectionStandings, live, upcoming);
@@ -962,7 +962,7 @@ export default function App() {
   } else if (tab === "stats") {
     screen = <StatsPanel subTab={activeSubTab} history={pointsHistory} chartPeople={chartPeople} cardStats={cardStats} h2hStats={h2hStats} />;
   } else if (tab === "mein") {
-    screen = <MyPanel selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} standings={standings} liveProjectionStandings={liveProjectionStandings} live={live} upcoming={upcoming} />;
+    screen = <MyPanel selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} standings={standings} liveProjectionStandings={liveProjectionStandings} live={live} upcoming={upcoming} played={played} />;
   }
 
   return <main className="app-shell">
