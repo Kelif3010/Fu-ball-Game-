@@ -532,34 +532,155 @@ function StatsPanel({ subTab, history, chartPeople, cardStats, h2hStats }) {
   return <PointsChart history={history} people={chartPeople} />;
 }
 
-function findNextMatchForPerson(person, live, upcoming) {
-  const matches = [...live, ...upcoming].filter(match => ownerOf(match.homeTeam) === person || ownerOf(match.awayTeam) === person).sort(matchSortAsc);
-  return matches[0] || null;
+function getPersonMatches(person, live, upcoming) {
+  return [...live, ...upcoming]
+    .filter(match => ownerOf(match.homeTeam) === person || ownerOf(match.awayTeam) === person)
+    .sort(matchSortAsc);
 }
 
-function buildWhatNeedsToHappen(person, standings, liveProjectionStandings) {
-  const official = standings.findIndex(row => row.person === person);
-  const projected = liveProjectionStandings.findIndex(row => row.person === person);
-  const row = standings[official] || null;
-  const leader = standings[0] || null;
-  const next = official === 0 ? standings[1] : standings[Math.max(0, official - 1)];
-  if (!row) return [];
-  const items = [];
-  if (official === 0) {
-    const gap = next ? row.pts - next.pts : row.pts;
-    items.push({ label: `${person} bleibt #1`, value: gap > 0 ? `${gap}P Vorsprung auf ${next?.person || "Platz 2"}` : "nur über Tordifferenz vorne", mood: gap > 1 ? "ok" : "warn" });
-    if (next) items.push({ label: `${next.person} überholt`, value: `braucht mindestens ${gap + 1}P mehr`, mood: gap >= 3 ? "no" : "warn" });
+function getMatchTitle(match) {
+  if (!match) return "";
+  return `${displayTeamName(match.homeTeam)} vs ${displayTeamName(match.awayTeam)}`;
+}
+
+function buildOpenMatchMap(live, upcoming) {
+  const map = Object.fromEntries(Object.keys(PARTICIPANTS).map(person => [person, []]));
+  [...live, ...upcoming].forEach(match => {
+    const homeOwner = ownerOf(match.homeTeam);
+    const awayOwner = ownerOf(match.awayTeam);
+    if (homeOwner && map[homeOwner]) map[homeOwner].push(match);
+    if (awayOwner && awayOwner !== homeOwner && map[awayOwner]) map[awayOwner].push(match);
+  });
+  return map;
+}
+
+function buildMyAnalysis(person, standings, liveProjectionStandings, live, upcoming) {
+  const rowIndex = standings.findIndex(item => item.person === person);
+  const row = standings[rowIndex] || null;
+  if (!row) return null;
+
+  const standingsByPerson = rankMap(standings);
+  const openMatchMap = buildOpenMatchMap(live, upcoming);
+  const openMatches = (openMatchMap[person] || []).sort(matchSortAsc);
+  const openCount = openMatches.length;
+  const maxExtraPoints = openCount * 3;
+  const maxPossiblePoints = row.pts + maxExtraPoints;
+
+  const mostPlayedRow = standings.reduce((best, current) => {
+    if (!best) return current;
+    if (current.played > best.played) return current;
+    if (current.played === best.played && current.pts > best.pts) return current;
+    if (current.played === best.played && current.pts === best.pts && current.td > best.td) return current;
+    return best;
+  }, null);
+
+  const mostPlayedName = mostPlayedRow?.person || person;
+  const gamesGap = Math.max(0, (mostPlayedRow?.played || row.played) - row.played);
+
+  const futureRanks = standings.map(other => {
+    const open = openMatchMap[other.person]?.length || 0;
+    const futurePoints = other.pts + open * 3;
+    return {
+      ...other,
+      open,
+      futurePoints,
+      rank: standingsByPerson[other.person]?.rank || 999,
+    };
+  }).sort((a, b) => b.futurePoints - a.futurePoints || b.td - a.td || b.gf - a.gf || a.person.localeCompare(b.person));
+
+  const bestPossibleRank = Math.max(1, futureRanks.findIndex(item => item.person === person) + 1);
+  const currentLeader = standings[0] || null;
+  const currentLeaderFuture = futureRanks[0] || null;
+
+  const currentThreats = futureRanks
+    .filter(item => item.person !== person && item.rank > (standingsByPerson[person]?.rank || 0))
+    .filter(item => item.futurePoints > maxPossiblePoints || (item.futurePoints === maxPossiblePoints && item.td > row.td))
+    .sort((a, b) => b.futurePoints - a.futurePoints || b.rank - a.rank)
+    .slice(0, 3);
+
+  const reachable = standings
+    .filter(item => item.person !== person && item.rank < (standingsByPerson[person]?.rank || 999))
+    .map(item => ({
+      ...item,
+      rank: standingsByPerson[item.person]?.rank || 999,
+      open: openMatchMap[item.person]?.length || 0,
+    }))
+    .filter(item => maxPossiblePoints > item.pts || (maxPossiblePoints === item.pts && row.td > item.td))
+    .sort((a, b) => a.rank - b.rank || b.pts - a.pts || b.td - a.td)
+    .slice(0, 3);
+
+  const nextImportantMatch = openMatches
+    .map(match => {
+      const homeOwner = ownerOf(match.homeTeam);
+      const awayOwner = ownerOf(match.awayTeam);
+      const opponent = homeOwner === person ? awayOwner : homeOwner;
+      const opponentMeta = opponent ? standingsByPerson[opponent] : null;
+      const myMeta = standingsByPerson[person];
+      const myRank = myMeta?.rank || rowIndex + 1;
+      const opponentRank = opponentMeta?.rank || 999;
+      const rankGap = opponentRank - myRank;
+      const ptsGap = Math.abs((opponentMeta?.row?.pts || 0) - row.pts);
+      let score = 12;
+      if (match.status === "IN_PLAY" || match.status === "LIVE") score += 70;
+      if (opponentMeta) {
+        if (opponentRank < myRank) score += 42;
+        else if (opponentRank === myRank) score += 32;
+        else if (opponentRank <= myRank + 2) score += 28;
+        else if (opponentRank <= myRank + 4) score += 18;
+        else score += 10;
+        if (rankGap < 0) score += Math.min(12, Math.abs(rankGap) * 3);
+        if (ptsGap <= 3) score += 16;
+        else if (ptsGap <= 6) score += 8;
+      } else {
+        score += 4;
+      }
+      return { match, opponent, score };
+    })
+    .sort((a, b) => b.score - a.score || matchSortAsc(a.match, b.match))[0] || null;
+
+  const canOvertakeText = currentThreats.length
+    ? currentThreats.map(item => item.person).join(" · ")
+    : "Niemand";
+  const overtakeText = reachable.length
+    ? reachable.map(item => item.person).join(" · ")
+    : "Aktuell niemand";
+
+  let summary = "";
+  if (rowIndex === 0) {
+    summary = openCount > 0
+      ? "Du bist aktuell vorne. Wenn du deine restlichen Spiele gewinnst, sicherst du sehr wahrscheinlich Platz 1."
+      : "Du bist aktuell vorne. Der Vorsprung hängt nur noch an den bereits gespielten Ergebnissen.";
+  } else if (bestPossibleRank === 1) {
+    summary = "Wenn du deine restlichen Spiele gewinnst, kannst du theoretisch noch auf Platz 1 springen.";
+  } else if (bestPossibleRank === 2) {
+    summary = "Wenn du deine restlichen Spiele gewinnst, kannst du theoretisch bis auf Platz 2 springen.";
   } else {
-    const gap = leader ? leader.pts - row.pts : 0;
-    items.push({ label: `${person} auf Platz ${official + 1}`, value: leader ? `${gap}P hinter ${leader.person}` : "Tabelle offen", mood: gap <= 3 ? "warn" : "no" });
-    if (next) items.push({ label: `Nächstes Ziel`, value: `${next.person} einholen`, mood: "warn" });
+    summary = `Selbst mit Siegen in allen restlichen Spielen wird Platz 1 schwierig, aber Platz ${bestPossibleRank} ist noch erreichbar.`;
   }
-  if (projected >= 0 && projected !== official) {
-    items.push({ label: "Live-Prognose", value: projected < official ? `hoch auf #${projected + 1}` : `runter auf #${projected + 1}`, mood: projected < official ? "ok" : "no" });
-  } else {
-    items.push({ label: "Live-Prognose", value: projected >= 0 ? `bleibt #${projected + 1}` : "keine Live-Änderung", mood: "ok" });
-  }
-  return items;
+
+  const gapText = gamesGap === 0
+    ? `${person} hat gleich viele Spiele wie der fleißigste Teilnehmer.`
+    : `${person} hat ${gamesGap} Spiele weniger als ${mostPlayedName}.`;
+
+  return {
+    row,
+    rowIndex,
+    openCount,
+    maxExtraPoints,
+    maxPossiblePoints,
+    mostPlayedName,
+    gamesGap,
+    bestPossibleRank,
+    currentLeader,
+    currentLeaderFuture,
+    nextImportantMatch,
+    currentThreats,
+    reachable,
+    summary,
+    gapText,
+    canOvertakeText,
+    overtakeText,
+  };
 }
 
 function PersonSelector({ selected, onSelect }) {
@@ -569,16 +690,57 @@ function PersonSelector({ selected, onSelect }) {
 function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionStandings, live, upcoming }) {
   const selectedRank = standings.findIndex(row => row.person === selectedPerson);
   const row = standings[selectedRank] || standings[0];
-  const nextMatch = findNextMatchForPerson(row?.person, live, upcoming);
-  const needs = buildWhatNeedsToHappen(row?.person, standings, liveProjectionStandings);
+  const analysis = buildMyAnalysis(row?.person, standings, liveProjectionStandings, live, upcoming);
   if (!row) return <EmptyState title="Noch keine Daten" text="Sobald Ergebnisse geladen sind, erscheint hier dein Teilnehmerbereich." />;
+  const nextMatch = analysis?.nextImportantMatch?.match || null;
+  const nextMatchOpponent = analysis?.nextImportantMatch?.opponent || "";
+  const canOvertakeList = analysis?.currentThreats || [];
+  const reachableList = analysis?.reachable || [];
   return <div className="card-stack">
     <PersonSelector selected={row.person} onSelect={setSelectedPerson} />
     <article className="my-card" style={{ "--accent": COLORS[row.person] }}>
       <div className="my-head"><div><h2>{rankLabel(selectedRank)} {row.person}</h2><p>{row.played} Spiele gewertet</p></div><div><small>Pkt</small><strong>{row.pts}</strong></div></div>
       <div className="stat-grid"><StatChip label="S" value={row.won} color="#34d399" /><StatChip label="U" value={row.drawn} /><StatChip label="N" value={row.lost} color="#f87171" /><StatChip label="TD" value={`${row.td > 0 ? "+" : ""}${row.td}`} color={tdColor(row.td)} /></div>
     </article>
-    <article className="what-card"><h3>🧮 Was muss passieren?</h3>{needs.map(item => <div key={item.label} className="what-row"><span>{item.label}</span><strong className={item.mood}>{item.value}</strong></div>)}</article>
+    <article className="what-card analysis-card">
+      <div className="analysis-head">
+        <div>
+          <h3>🧮 Was muss passieren?</h3>
+          <p>{analysis?.summary || "Keine Analyse verfügbar."}</p>
+        </div>
+        <span className="analysis-badge">{analysis?.rowIndex === 0 ? "Aktuell 1." : `Aktuell #${Math.max(1, selectedRank + 1)}`}</span>
+      </div>
+      <div className="analysis-pills">
+        <InfoPill label="Gespielt" value={analysis ? `${row.played}` : "0"} color={COLORS[row.person]} />
+        <InfoPill label="Offen" value={analysis ? `${analysis.openCount}` : "0"} color="#fbbf24" />
+        <InfoPill label="Max" value={analysis ? `${analysis.maxPossiblePoints}` : `${row.pts}`} color="#34d399" />
+        <InfoPill label="Platz" value={analysis ? `#${analysis.bestPossibleRank}` : `#${selectedRank + 1}`} color="#f59e0b" />
+      </div>
+      <div className="analysis-list">
+        <div className="analysis-row">
+          <span>📈 Spiele / Potential</span>
+          <strong className="ok">{analysis?.gapText || "Keine Daten"}</strong>
+        </div>
+        <div className="analysis-row">
+          <span>🔥 Wichtigstes nächstes Spiel</span>
+          <strong>{nextMatch ? `${getMatchTitle(nextMatch)}${nextMatchOpponent ? ` · ${nextMatchOpponent}` : ""}` : "Kein offenes Spiel gefunden"}</strong>
+        </div>
+        <div className="analysis-row">
+          <span>⚠️ Kann dich überholen</span>
+          <strong className={canOvertakeList.length ? "warn" : "ok"}>{analysis?.canOvertakeText || "Niemand"}</strong>
+        </div>
+        <div className="analysis-chip-row">
+          {canOvertakeList.length > 0 ? canOvertakeList.map(item => <span key={item.person} className="analysis-chip">{item.person} · {item.futurePoints}P max</span>) : <span className="analysis-chip muted">Mit deinem Maximalwert keiner mehr</span>}
+        </div>
+        <div className="analysis-row">
+          <span>🎯 Kannst du überholen</span>
+          <strong className="ok">{analysis?.overtakeText || "Aktuell niemand"}</strong>
+        </div>
+        <div className="analysis-chip-row">
+          {reachableList.length > 0 ? reachableList.map(item => <span key={item.person} className="analysis-chip good">{item.person} · {item.pts}P aktuell</span>) : <span className="analysis-chip muted">Alle vor dir liegen zu weit weg</span>}
+        </div>
+      </div>
+    </article>
     <section className="section-block"><h2>Nächstes Spiel</h2>{nextMatch ? <ScoreCard match={nextMatch} live={live.includes(nextMatch)} compact /> : <EmptyState title="Kein nächstes Spiel gefunden" text="Aktuell liefert die API kein anstehendes Spiel für diesen Teilnehmer." compact />}</section>
   </div>;
 }
@@ -589,6 +751,10 @@ function EmptyState({ title, text, compact = false }) {
 
 const STYLES = `
 *{box-sizing:border-box}body{margin:0;background:#05091a}.app-shell{min-height:100vh;background:radial-gradient(circle at top,#101b32 0,#05091a 45%,#040713 100%);color:#e2e8f0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:12px}.phone-frame{width:min(100%,430px);min-height:calc(100vh - 24px);margin:0 auto;background:#060d1d;border:1px solid rgba(255,255,255,.09);border-radius:28px;overflow:hidden;box-shadow:0 22px 70px rgba(0,0,0,.35);display:flex;flex-direction:column}.app-header{padding:18px 16px 12px;background:linear-gradient(180deg,#071126 0,#060d1d 100%);border-bottom:1px solid rgba(255,255,255,.055)}.header-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.app-header h1{margin:0;color:#fbbf24;font-size:24px;letter-spacing:-.7px;line-height:1.05}.app-header p{margin:6px 0 0;color:#64748b;font-size:12px;font-weight:700;line-height:1.35}.refresh-btn{width:38px;height:38px;border-radius:14px;border:1px solid rgba(245,158,11,.26);background:rgba(245,158,11,.1);color:#fbbf24;font-size:18px;font-weight:900;cursor:pointer;flex-shrink:0}.refresh-btn:disabled{opacity:.7;cursor:default}.header-meta-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}.header-meta-row>span{color:#94a3b8;font-size:11px;font-weight:700}.countdown-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,.11);border:1px solid rgba(245,158,11,.24);border-radius:999px;padding:5px 10px;color:#94a3b8;font-size:10px;font-weight:800}.countdown-pill strong{color:#fbbf24;font-size:12px;font-variant-numeric:tabular-nums}.countdown-dot{width:6px;height:6px;border-radius:50%;background:#fbbf24;animation:pulseDot 1.7s ease-in-out infinite}@keyframes pulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.78)}}.sub-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:1px solid rgba(255,255,255,.06);background:#060d1d}.sub-tabs button{border:0;border-bottom:2px solid transparent;background:transparent;color:#64748b;padding:10px 8px;font-size:12px;font-weight:900;cursor:pointer}.sub-tabs button.active{color:#fbbf24;border-bottom-color:#fbbf24;background:rgba(245,158,11,.045)}.sub-tabs span{background:#ef4444;color:#fff;border-radius:999px;padding:1px 5px;font-size:9px;margin-left:4px}.content{flex:1;padding:13px 14px 16px;overflow:visible}.bottom-nav{position:sticky;bottom:0;display:grid;grid-template-columns:repeat(5,1fr);gap:0;background:#060d1d;border-top:1px solid rgba(255,255,255,.08);padding:7px 6px max(9px,env(safe-area-inset-bottom));z-index:5}.bottom-nav-item{position:relative;border:0;background:transparent;color:#475569;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 4px;border-radius:14px;font-size:10px;font-weight:900;cursor:pointer}.bottom-nav-item .nav-icon{font-size:20px;line-height:1}.bottom-nav-item.active{color:#fbbf24;background:rgba(245,158,11,.055)}.bottom-nav-item i{width:4px;height:4px;border-radius:50%;background:#fbbf24;opacity:0}.bottom-nav-item.active i{opacity:1}.bottom-nav-item em{position:absolute;top:2px;left:50%;margin-left:8px;background:#ef4444;color:#fff;font-size:9px;font-style:normal;border-radius:999px;padding:1px 5px;line-height:1.2}.top-alert,.hint-box,.empty-state{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px;color:#94a3b8;font-size:12px;line-height:1.45}.top-alert{margin-bottom:12px}.top-alert.leader{color:#fff;background:linear-gradient(135deg,rgba(239,68,68,.18),rgba(245,158,11,.09));border-color:rgba(239,68,68,.28)}.top-alert.error{color:#fca5a5;background:rgba(239,68,68,.11);border-color:rgba(239,68,68,.32)}.hint-box.red{color:#fca5a5;background:rgba(239,68,68,.07);border-color:rgba(239,68,68,.18)}.empty-state strong{display:block;color:#cbd5e1;font-size:14px}.empty-state p{margin:4px 0 0}.empty-state.compact{padding:10px}.card-stack{display:grid;gap:9px}.card-stack.slim{gap:6px}.standings-list{display:grid;gap:7px}.standing-row{--accent:#fbbf24;--progress:0%;border-radius:15px;overflow:hidden;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.075)}.standing-row.first{background:linear-gradient(135deg,rgba(245,158,11,.11),rgba(255,255,255,.035));border-color:rgba(245,158,11,.25)}.standing-row.podium{background:rgba(255,255,255,.045)}.standing-main{width:100%;border:0;background:transparent;color:inherit;display:flex;align-items:center;gap:9px;padding:11px 12px 7px;text-align:left;cursor:pointer}.rank-badge{width:28px;text-align:center;font-size:16px;font-weight:950;color:#475569;flex-shrink:0}.person-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0}.standing-name-wrap{min-width:0;flex:1}.standing-name-wrap strong{display:block;color:var(--accent);font-size:15px;line-height:1;font-weight:950}.standing-name-wrap small{display:block;margin-top:3px;color:#475569;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.standing-points{text-align:right;flex-shrink:0}.standing-points small{display:block;color:#475569;font-size:9px;text-transform:uppercase;font-weight:900}.standing-points strong{display:block;color:var(--accent);font-size:26px;line-height:1;font-weight:950;letter-spacing:-1px}.progress-wrap{display:flex;align-items:center;gap:8px;padding:0 12px 9px}.progress-track{height:3px;background:rgba(255,255,255,.07);border-radius:999px;overflow:hidden;flex:1}.progress-track div{height:100%;width:var(--progress);background:var(--accent);border-radius:999px}.progress-wrap span{font-size:10px;color:#64748b;font-weight:800;white-space:nowrap}.standing-details{display:none;padding:0 12px 12px}.standing-row.open .standing-details{display:grid;gap:9px}.stat-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.stat-chip{min-width:0;background:rgba(255,255,255,.048);border:1px solid rgba(255,255,255,.065);border-radius:9px;padding:6px 4px;text-align:center}.stat-chip span{display:block;color:#64748b;font-size:9px;font-weight:950;text-transform:uppercase}.stat-chip strong{display:block;margin-top:2px;font-size:13px;font-weight:950}.team-pill-grid{display:flex;flex-wrap:wrap;gap:6px}.team-pill-grid span{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:999px;padding:6px 8px;color:#cbd5e1;font-size:11px;font-weight:800}.live-movement-row,.impact-row{display:flex;gap:6px;flex-wrap:wrap;padding:0 12px 9px}.info-pill{--pill:#94a3b8;display:inline-flex;align-items:center;gap:4px;border:1px solid color-mix(in srgb,var(--pill) 35%,transparent);background:color-mix(in srgb,var(--pill) 14%,transparent);color:var(--pill);border-radius:999px;padding:5px 8px;font-size:10px;font-weight:950;white-space:nowrap}.info-pill span{color:#94a3b8}.match-card{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);border-radius:14px;padding:12px;outline:none}.match-card.live{background:linear-gradient(135deg,rgba(239,68,68,.11),rgba(255,255,255,.035));border-color:rgba(239,68,68,.25)}.match-card.selected{border-color:rgba(251,191,36,.55);box-shadow:0 0 0 2px rgba(251,191,36,.07)}.match-card.compact{padding:10px}.match-grid{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:9px;align-items:center}.team-block{min-width:0}.team-block strong{display:block;color:#e2e8f0;font-size:13px;line-height:1.25;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.team-block small{display:block;margin-top:2px;font-size:10px;font-weight:900}.score-center{text-align:center;min-width:66px}.status-pill{display:inline-flex;align-items:center;justify-content:center;gap:4px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.055);border-radius:999px;padding:3px 7px;color:#94a3b8;font-size:9px;font-weight:950;text-transform:uppercase;letter-spacing:.35px;margin-bottom:5px}.match-card.live .status-pill{color:#fecaca;background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.25)}.status-pill span{width:6px;height:6px;border-radius:50%;background:#ef4444;animation:pulseDot 1.2s ease-in-out infinite}.score-center strong{display:block;color:#fff;font-size:23px;line-height:1;font-weight:950;letter-spacing:-1px}.score-center small{display:block;margin-top:3px;color:#64748b;font-size:10px;font-weight:850}.score-center em{display:inline-block;margin-top:5px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.22);color:#fbbf24;border-radius:5px;padding:2px 5px;font-size:9px;font-style:normal;font-weight:950}.score-center b{display:block;margin-top:4px;color:#64748b;font-size:9px}.match-card .impact-row{padding:9px 0 0}.match-center-panel{border:1px solid rgba(251,191,36,.18);background:linear-gradient(135deg,rgba(251,191,36,.07),rgba(255,255,255,.025));border-radius:15px;padding:12px}.loading-line{margin:0;color:#fbbf24;font-size:13px;font-weight:850}.error-line{margin:0;color:#fca5a5;font-size:13px;font-weight:850}.source-line{color:#94a3b8;font-size:11px;line-height:1.4;margin-bottom:9px}.match-section h3,.section-block h2{margin:0 0 8px;color:#fbbf24;font-size:13px;letter-spacing:.1px}.section-block{display:grid;gap:7px}.lineup-grid{display:grid;grid-template-columns:1fr;gap:9px}.lineup-card{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);border-radius:14px;padding:11px}.lineup-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:10px}.lineup-head h3{margin:0;color:#fbbf24;font-size:14px}.lineup-head small{display:block;margin-top:2px;color:#94a3b8;font-size:11px}.lineup-head span{align-self:flex-start;border:1px solid rgba(251,191,36,.25);background:rgba(251,191,36,.1);color:#fbbf24;border-radius:999px;padding:4px 7px;font-size:10px;font-weight:950}.player-list{margin-top:10px}.player-list:first-of-type{margin-top:0}.player-list h4{margin:0 0 7px;color:#cbd5e1;font-size:11px;text-transform:uppercase;letter-spacing:.4px}.player-list h4 span{color:#64748b}.player-list p,.soft-text{margin:0;color:#64748b;font-size:12px}.player-list>div{display:grid;gap:6px}.player-row{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;align-items:center;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.035);border-radius:10px;padding:7px 8px}.player-row>span{width:28px;height:28px;display:grid;place-items:center;border-radius:999px;background:rgba(255,255,255,.06);color:#fbbf24;font-size:11px;font-weight:950}.player-row strong{display:block;color:#e2e8f0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.player-row small{display:block;color:#64748b;font-size:10px}.event-list{display:grid;gap:6px}.event-row{display:grid;grid-template-columns:38px minmax(0,1fr);gap:8px;align-items:center;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.035);border-radius:11px;padding:7px 9px}.event-row>strong{color:#fbbf24;font-size:12px}.event-row b{display:block;color:#e2e8f0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.event-row small{display:block;margin-top:1px;color:#94a3b8;font-size:10px}.chart-card,.cards-ranking,.my-card,.what-card{background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.075);border-radius:15px;padding:12px}.chart-title{color:#64748b;font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.45px;margin-bottom:8px}.chart-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:7px}.chart-legend span{display:inline-flex;align-items:center;gap:5px;color:#94a3b8;font-size:11px;font-weight:850}.chart-legend i{width:16px;height:3px;border-radius:2px}.cards-ranking{display:grid;gap:2px}.card-ranking-row{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}.card-ranking-row:last-child{border-bottom:0}.card-ranking-row>span{width:22px;text-align:center;color:#475569;font-size:12px;font-weight:950}.card-ranking-row strong{flex:1;font-size:13px}.card-ranking-row div{display:flex;gap:5px}.card-ranking-row em,.card-ranking-row b{border-radius:7px;padding:3px 7px;font-size:11px;font-style:normal}.card-ranking-row em{background:rgba(250,204,21,.1);border:1px solid rgba(250,204,21,.24);color:#fde047}.card-ranking-row b{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.24);color:#fca5a5}.person-selector{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.person-selector button{--accent:#fbbf24;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.04);color:#64748b;border-radius:999px;padding:7px 5px;font-size:11px;font-weight:900;cursor:pointer}.person-selector button.active{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 38%,transparent);background:color-mix(in srgb,var(--accent) 12%,transparent)}.my-card{--accent:#fbbf24;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 12%,transparent),rgba(255,255,255,.035));border-color:color-mix(in srgb,var(--accent) 25%,transparent)}.my-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}.my-head h2{margin:0;color:var(--accent);font-size:20px}.my-head p{margin:3px 0 0;color:#64748b;font-size:11px;font-weight:800}.my-head div:last-child{text-align:right}.my-head small{display:block;color:#64748b;font-size:9px;font-weight:900;text-transform:uppercase}.my-head strong{display:block;color:var(--accent);font-size:31px;line-height:1;font-weight:950;letter-spacing:-1px}.what-card h3{margin:0 0 8px;color:#7dd3fc;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.what-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0;font-size:11px}.what-row span{color:#94a3b8}.what-row strong{text-align:right}.what-row strong.ok{color:#34d399}.what-row strong.warn{color:#fbbf24}.what-row strong.no{color:#f87171}@media (min-width:760px){.phone-frame{width:min(100%,760px)}.lineup-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.content{padding:16px}.person-selector{grid-template-columns:repeat(8,minmax(0,1fr))}}@media (max-width:370px){.app-shell{padding:0}.phone-frame{min-height:100vh;border-radius:0;border:0}.stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.person-selector{grid-template-columns:repeat(2,minmax(0,1fr))}.bottom-nav-item span:last-of-type{font-size:9px}.app-header h1{font-size:22px}}.h2h-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}.h2h-header{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:800}.h2h-vs{color:#64748b;font-size:14px;font-weight:400}.h2h-main-stats{display:flex;flex-direction:column;gap:4px}.h2h-main-stats strong{color:#fbbf24;font-size:15px}.h2h-win-row{display:flex;justify-content:space-between;font-size:13px;color:#94a3b8}.h2h-draws{font-size:12px;color:#64748b}.h2h-goals-section h4{margin:0;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.5px}.h2h-goals-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;font-weight:600}.h2h-divider{color:#64748b}.h2h-last-match{margin-top:4px;border-top:1px solid rgba(255,255,255,.05);padding-top:10px}.h2h-last-match small{color:#64748b;font-size:11px;font-weight:700;display:block;margin-bottom:6px}.h2h-last-match-box{display:flex;align-items:center;justify-content:space-between;gap:6px;background:rgba(0,0,0,.2);padding:8px 12px;border-radius:10px;font-size:12px}.h2h-result{color:#fbbf24;font-size:14px;min-width:30px;text-align:center}.team-truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+`;
+
+const ANALYSIS_STYLES = `
+.analysis-card{display:grid;gap:10px}.analysis-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.analysis-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.analysis-head p{margin:4px 0 0;color:#cbd5e1;font-size:12px;line-height:1.4}.analysis-badge{display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 9px;border-radius:999px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.1);color:#fbbf24;font-size:10px;font-weight:950;white-space:nowrap}.analysis-pills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.analysis-list{display:grid;gap:8px}.analysis-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}.analysis-row:first-child{padding-top:0;border-top:0}.analysis-row span{min-width:0;color:#94a3b8;font-size:11px;font-weight:800}.analysis-row strong{min-width:0;text-align:right;color:#e2e8f0;font-size:11px;font-weight:900;line-height:1.35}.analysis-row strong.ok{color:#34d399}.analysis-row strong.warn{color:#fbbf24}.analysis-chip-row{display:flex;flex-wrap:wrap;gap:6px}.analysis-chip{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:999px;padding:5px 7px;color:#e2e8f0;font-size:10px;font-weight:800;white-space:nowrap}.analysis-chip.good{border-color:rgba(52,211,153,.24);background:rgba(52,211,153,.08);color:#86efac}.analysis-chip.muted{color:#94a3b8}@media (min-width:760px){.analysis-pills{grid-template-columns:repeat(4,minmax(0,1fr))}}
 `;
 
 export default function App() {
@@ -725,6 +891,7 @@ export default function App() {
 
   return <main className="app-shell">
     <style>{STYLES}</style>
+    <style>{ANALYSIS_STYLES}</style>
     <section className="phone-frame">
       <Header loading={loading} updated={updated} liveCount={live.length} playedCount={played.length} upcomingCount={upcoming.length} secondsLeft={secondsLeft} onRefresh={load} />
       <SubTabs activeTab={tab} activeSubTab={activeSubTab} onChange={changeSubTab} liveCount={live.length} />
