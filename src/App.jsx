@@ -107,6 +107,10 @@ function buildStandings(teamStats) {
   }).sort((a, b) => b.pts - a.pts || b.td - a.td || b.gf - a.gf || a.person.localeCompare(b.person));
 }
 
+function compareStandingRows(a, b) {
+  return b.pts - a.pts || b.td - a.td || b.gf - a.gf || a.person.localeCompare(b.person);
+}
+
 function rankMap(standings) {
   return standings.reduce((acc, row, index) => {
     acc[row.person] = { rank: index + 1, row };
@@ -577,7 +581,7 @@ function buildMyAnalysis(person, standings, liveProjectionStandings, live, upcom
   const mostPlayedName = mostPlayedRow?.person || person;
   const gamesGap = Math.max(0, (mostPlayedRow?.played || row.played) - row.played);
 
-  const futureRanks = standings.map(other => {
+  const futureThreats = standings.map(other => {
     const open = openMatchMap[other.person]?.length || 0;
     const futurePoints = other.pts + open * 3;
     return {
@@ -588,11 +592,13 @@ function buildMyAnalysis(person, standings, liveProjectionStandings, live, upcom
     };
   }).sort((a, b) => b.futurePoints - a.futurePoints || b.td - a.td || b.gf - a.gf || a.person.localeCompare(b.person));
 
-  const bestPossibleRank = Math.max(1, futureRanks.findIndex(item => item.person === person) + 1);
+  const winAllTable = standings
+    .map(other => other.person === person ? { ...other, pts: maxPossiblePoints } : other)
+    .sort(compareStandingRows);
+  const winAllRank = Math.max(1, winAllTable.findIndex(item => item.person === person) + 1);
   const currentLeader = standings[0] || null;
-  const currentLeaderFuture = futureRanks[0] || null;
 
-  const currentThreats = futureRanks
+  const currentThreats = futureThreats
     .filter(item => item.person !== person && item.rank > (standingsByPerson[person]?.rank || 0))
     .filter(item => item.futurePoints > maxPossiblePoints || (item.futurePoints === maxPossiblePoints && item.td > row.td))
     .sort((a, b) => b.futurePoints - a.futurePoints || b.rank - a.rank)
@@ -647,15 +653,15 @@ function buildMyAnalysis(person, standings, liveProjectionStandings, live, upcom
 
   let summary = "";
   if (rowIndex === 0) {
-    summary = openCount > 0
-      ? "Du bist aktuell vorne. Wenn du deine restlichen Spiele gewinnst, sicherst du sehr wahrscheinlich Platz 1."
-      : "Du bist aktuell vorne. Der Vorsprung hängt nur noch an den bereits gespielten Ergebnissen.";
-  } else if (bestPossibleRank === 1) {
+    summary = currentThreats.length > 0
+      ? `Du bist aktuell vorne, aber ${currentThreats.map(item => item.person).join(" und ")} können dich noch überholen.`
+      : "Du bist aktuell vorne. Wenn du deine restlichen Spiele gewinnst, sicherst du sehr wahrscheinlich Platz 1.";
+  } else if (winAllRank === 1) {
     summary = "Wenn du deine restlichen Spiele gewinnst, kannst du theoretisch noch auf Platz 1 springen.";
-  } else if (bestPossibleRank === 2) {
+  } else if (winAllRank === 2) {
     summary = "Wenn du deine restlichen Spiele gewinnst, kannst du theoretisch bis auf Platz 2 springen.";
   } else {
-    summary = `Selbst mit Siegen in allen restlichen Spielen wird Platz 1 schwierig, aber Platz ${bestPossibleRank} ist noch erreichbar.`;
+    summary = `Selbst mit Siegen in allen restlichen Spielen wird Platz 1 schwierig, aber Platz ${winAllRank} ist noch erreichbar.`;
   }
 
   const gapText = gamesGap === 0
@@ -670,9 +676,8 @@ function buildMyAnalysis(person, standings, liveProjectionStandings, live, upcom
     maxPossiblePoints,
     mostPlayedName,
     gamesGap,
-    bestPossibleRank,
+    winAllRank,
     currentLeader,
-    currentLeaderFuture,
     nextImportantMatch,
     currentThreats,
     reachable,
@@ -714,7 +719,7 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
         <InfoPill label="Gespielt" value={analysis ? `${row.played}` : "0"} color={COLORS[row.person]} />
         <InfoPill label="Offen" value={analysis ? `${analysis.openCount}` : "0"} color="#fbbf24" />
         <InfoPill label="Max" value={analysis ? `${analysis.maxPossiblePoints}` : `${row.pts}`} color="#34d399" />
-        <InfoPill label="Platz" value={analysis ? `#${analysis.bestPossibleRank}` : `#${selectedRank + 1}`} color="#f59e0b" />
+        <InfoPill label="Max Platz" value={analysis ? `#${analysis.winAllRank}` : `#${selectedRank + 1}`} color="#f59e0b" />
       </div>
       <div className="analysis-list">
         <div className="analysis-row">
