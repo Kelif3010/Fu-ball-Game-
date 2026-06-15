@@ -558,6 +558,45 @@ function buildOpenMatchMap(live, upcoming) {
   return map;
 }
 
+function getLastResultsForPerson(person, played, limit = 5) {
+  return [...played]
+    .sort(matchSortDesc)
+    .filter(match => ownerOf(match.homeTeam) === person || ownerOf(match.awayTeam) === person)
+    .slice(0, limit)
+    .map(match => {
+      const hg = Number(match.homeGoals);
+      const ag = Number(match.awayGoals);
+      const homeOwner = ownerOf(match.homeTeam);
+      const awayOwner = ownerOf(match.awayTeam);
+      let emoji = "🤝";
+      if (Number.isFinite(hg) && Number.isFinite(ag)) {
+        if (hg > ag) emoji = homeOwner === person ? "✅" : "❌";
+        else if (ag > hg) emoji = awayOwner === person ? "✅" : "❌";
+      }
+      return { emoji, match };
+    });
+}
+
+function buildFormCurveRows(selectedPerson, standings, analysis) {
+  const rows = [selectedPerson];
+  if (analysis?.currentThreats?.length) rows.push(...analysis.currentThreats.map(item => item.person));
+  if (analysis?.reachable?.length) rows.push(...analysis.reachable.map(item => item.person));
+  const unique = [];
+  for (const person of rows) {
+    if (!person || unique.includes(person)) continue;
+    unique.push(person);
+    if (unique.length >= 3) break;
+  }
+  if (unique.length < 3) {
+    for (const row of standings) {
+      if (unique.includes(row.person)) continue;
+      unique.push(row.person);
+      if (unique.length >= 3) break;
+    }
+  }
+  return unique;
+}
+
 function buildMyAnalysis(person, standings, liveProjectionStandings, live, upcoming) {
   const rowIndex = standings.findIndex(item => item.person === person);
   const row = standings[rowIndex] || null;
@@ -688,6 +727,37 @@ function buildMyAnalysis(person, standings, liveProjectionStandings, live, upcom
   };
 }
 
+function FormCurveCard({ selectedPerson, standings, played, analysis }) {
+  const rows = buildFormCurveRows(selectedPerson, standings, analysis);
+  const hasAnyForm = rows.some(person => getLastResultsForPerson(person, played).length > 0);
+  if (!hasAnyForm) {
+    return <article className="what-card analysis-card"><h3>🔥 Formkurve letzte 5 Spiele</h3><p className="form-empty">Noch keine Formdaten verfügbar.</p></article>;
+  }
+  return <article className="what-card analysis-card">
+    <div className="analysis-head">
+      <div>
+        <h3>🔥 Formkurve letzte 5 Spiele</h3>
+        <p>Die letzten Ergebnisse aus den bereits gespielten Partien.</p>
+      </div>
+      <span className="analysis-badge">Letzte 5</span>
+    </div>
+    <div className="form-list">
+      {rows.map(person => {
+        const results = getLastResultsForPerson(person, played);
+        return <div className="form-row" key={person}>
+          <div className="form-name">
+            <strong>{person}</strong>
+            <small>{results.length ? `${results.length} Spiele` : "Keine Spiele"}</small>
+          </div>
+          <div className="form-results">
+            {results.length > 0 ? results.map(({ emoji, match }, index) => <span key={`${person}-${match.id || index}-${index}`} className={`form-result ${emoji === "✅" ? "win" : emoji === "❌" ? "loss" : "draw"}`} title={`${displayTeamName(match.homeTeam)} vs ${displayTeamName(match.awayTeam)}`}>{emoji}</span>) : <span className="form-result muted">-</span>}
+          </div>
+        </div>;
+      })}
+    </div>
+  </article>;
+}
+
 function PersonSelector({ selected, onSelect }) {
   return <div className="person-selector">{Object.keys(PARTICIPANTS).map(person => <button key={person} className={selected === person ? "active" : ""} onClick={() => onSelect(person)} style={{ "--accent": COLORS[person] }}>{person}</button>)}</div>;
 }
@@ -746,6 +816,7 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
         </div>
       </div>
     </article>
+    <FormCurveCard selectedPerson={row.person} standings={standings} played={played} analysis={analysis} />
     <section className="section-block"><h2>Nächstes Spiel</h2>{nextMatch ? <ScoreCard match={nextMatch} live={live.includes(nextMatch)} compact /> : <EmptyState title="Kein nächstes Spiel gefunden" text="Aktuell liefert die API kein anstehendes Spiel für diesen Teilnehmer." compact />}</section>
   </div>;
 }
@@ -759,7 +830,7 @@ const STYLES = `
 `;
 
 const ANALYSIS_STYLES = `
-.analysis-card{display:grid;gap:10px}.analysis-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.analysis-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.analysis-head p{margin:4px 0 0;color:#cbd5e1;font-size:12px;line-height:1.4}.analysis-badge{display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 9px;border-radius:999px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.1);color:#fbbf24;font-size:10px;font-weight:950;white-space:nowrap}.analysis-pills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.analysis-list{display:grid;gap:8px}.analysis-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}.analysis-row:first-child{padding-top:0;border-top:0}.analysis-row span{min-width:0;color:#94a3b8;font-size:11px;font-weight:800}.analysis-row strong{min-width:0;text-align:right;color:#e2e8f0;font-size:11px;font-weight:900;line-height:1.35}.analysis-row strong.ok{color:#34d399}.analysis-row strong.warn{color:#fbbf24}.analysis-chip-row{display:flex;flex-wrap:wrap;gap:6px}.analysis-chip{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:999px;padding:5px 7px;color:#e2e8f0;font-size:10px;font-weight:800;white-space:nowrap}.analysis-chip.good{border-color:rgba(52,211,153,.24);background:rgba(52,211,153,.08);color:#86efac}.analysis-chip.muted{color:#94a3b8}@media (min-width:760px){.analysis-pills{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.analysis-card{display:grid;gap:10px}.analysis-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.analysis-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.analysis-head p{margin:4px 0 0;color:#cbd5e1;font-size:12px;line-height:1.4}.analysis-badge{display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 9px;border-radius:999px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.1);color:#fbbf24;font-size:10px;font-weight:950;white-space:nowrap}.analysis-pills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.analysis-list{display:grid;gap:8px}.analysis-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}.analysis-row:first-child{padding-top:0;border-top:0}.analysis-row span{min-width:0;color:#94a3b8;font-size:11px;font-weight:800}.analysis-row strong{min-width:0;text-align:right;color:#e2e8f0;font-size:11px;font-weight:900;line-height:1.35}.analysis-row strong.ok{color:#34d399}.analysis-row strong.warn{color:#fbbf24}.analysis-chip-row{display:flex;flex-wrap:wrap;gap:6px}.analysis-chip{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:999px;padding:5px 7px;color:#e2e8f0;font-size:10px;font-weight:800;white-space:nowrap}.analysis-chip.good{border-color:rgba(52,211,153,.24);background:rgba(52,211,153,.08);color:#86efac}.analysis-chip.muted{color:#94a3b8}.form-list{display:grid;gap:8px}.form-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.form-row:first-of-type{padding-top:0;border-top:0}.form-name{min-width:0}.form-name strong{display:block;color:#e2e8f0;font-size:12px;font-weight:900;line-height:1.2}.form-name small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.form-results{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}.form-result{min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11px;line-height:1}.form-result.win{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}.form-result.loss{border-color:rgba(248,113,113,.28);background:rgba(248,113,113,.08)}.form-result.draw{border-color:rgba(251,191,36,.22);background:rgba(251,191,36,.08)}.form-result.muted{color:#64748b;padding:0 6px;min-width:auto}.form-empty{margin:0;color:#94a3b8;font-size:12px;line-height:1.4}@media (min-width:760px){.analysis-pills{grid-template-columns:repeat(4,minmax(0,1fr))}}
 `;
 
 export default function App() {
