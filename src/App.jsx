@@ -522,7 +522,7 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
                 <span className="scenario-icon">⚠️</span>
                 <div className="scenario-content">
                   <strong style={{ color: COLORS[threat.person] }}>{threat.person} kann dich noch einholen</strong>
-                  <p>{formatNeedLine(threat.pointsNeeded, threat.tdNeededAtTie)}</p>
+                  <p>{formatNeedLine(threat)}</p>
                 </div>
                 <span className="scenario-badge threat">Gefahr</span>
               </article>
@@ -542,7 +542,7 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
                 <span className="scenario-icon">🎯</span>
                 <div className="scenario-content">
                   <strong style={{ color: COLORS[target.person] }}>{target.person} ist dein nächstes Ziel</strong>
-                  <p>{formatNeedLine(target.pointsNeeded, target.tdNeededAtTie)}</p>
+                  <p>{formatNeedLine(target)}</p>
                 </div>
                 <span className="scenario-badge target">Erreichbar</span>
               </article>
@@ -564,14 +564,18 @@ function EmptyState({ title, text, compact = false }) {
   return <div className={`empty-state ${compact ? "compact" : ""}`}><strong>{title}</strong><p>{text}</p></div>;
 }
 
-function formatNeedLine(pointsNeeded, tdNeededAtTie) {
-  const pointsText = pointsNeeded === 1 ? "1 Punkt" : `${pointsNeeded} Punkte`;
-  if (pointsNeeded === 0) {
-    if (tdNeededAtTie <= 0) return "Punktgleichheit reicht, dann entscheidet die Tordifferenz.";
-    return `Punktgleichheit reicht noch nicht: +${tdNeededAtTie} TD nötig.`;
+function formatNeedLine(item) {
+  if (!item) return "";
+  const tiePoints = item.pointsToTie ?? item.pointsNeeded ?? 0;
+  const passPoints = item.pointsToPass ?? (tiePoints + 1);
+  const pointsTextTie = tiePoints === 1 ? "1 Punkt" : `${tiePoints} Punkte`;
+  const pointsTextPass = passPoints === 1 ? "1 Punkt" : `${passPoints} Punkte`;
+  if (tiePoints === 0) {
+    return item.tdNeededAtTie > 0
+      ? `Punktgleichheit reicht noch nicht: +${item.tdNeededAtTie} Tordifferenz nötig.`
+      : `Punktgleichheit reicht schon, die Tordifferenz ist besser.`;
   }
-  if (tdNeededAtTie <= 0) return `${pointsText} reichen, wenn die Tordifferenz gleich bleibt.`;
-  return `${pointsText} und bei Punktgleichheit +${tdNeededAtTie} TD nötig.`;
+  return `${pointsTextTie} für Punktgleichheit, ${pointsTextPass} zum Überholen. Bei Punktgleichheit brauchst du +${item.tdNeededAtTie} Tordifferenz.`;
 }
 
 function TeamModal({ team, onClose, played, live, upcoming }) {

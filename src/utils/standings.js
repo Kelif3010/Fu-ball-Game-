@@ -210,10 +210,13 @@ function beatsOnTieBreak(a, b) {
 
 function buildCatchupRequirement(source, target) {
   const pointsToTie = Math.max(0, target.pts - source.pts);
+  const pointsToPass = pointsToTie + 1;
   const tdNeededAtTie = Math.max(0, target.td - source.td + 1);
   const gfNeededAtTie = Math.max(0, target.gf - source.gf + 1);
   return {
+    pointsNeeded: pointsToTie,
     pointsToTie,
+    pointsToPass,
     tdNeededAtTie,
     gfNeededAtTie,
   };
