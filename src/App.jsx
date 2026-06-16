@@ -1155,10 +1155,6 @@ export default function App() {
     return () => window.clearInterval(interval);
   }, [load, refreshSeconds]);
 
-  useEffect(() => {
-    if (standings.length > 0 && updated) saveRankSnapshot(standings);
-  }, [standings, updated]);
-
   const teamStats = useMemo(() => buildTeamStats(played), [played]);
   const standings = useMemo(() => buildStandings(teamStats), [teamStats]);
   const officialRanks = useMemo(() => rankMap(standings), [standings]);
@@ -1175,6 +1171,10 @@ export default function App() {
   const statsMaxPossibleRows = useMemo(() => buildMaxPossibleRows(standings, live, upcoming), [standings, live, upcoming]);
   const statsFormRows = useMemo(() => buildFormComparisonRows(standings, played), [standings, played]);
   const h2hStats = useMemo(() => buildHeadToHeadStats(played), [played]);
+
+  useEffect(() => {
+    if (standings.length > 0 && updated) saveRankSnapshot(standings);
+  }, [standings, updated]);
 
   const activeSubTab = subTabs[tab];
   const changeSubTab = id => setSubTabs(prev => ({ ...prev, [tab]: id }));
