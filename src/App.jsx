@@ -204,7 +204,7 @@ function ScoreCard({ match, live = false, onClick = null, selected = false, comp
         <div className="status-pill">{live && <span />} {statusLabel(match.status)}</div>
         <strong>{hasScore ? `${hg}:${ag}` : (match.time || "vs")}</strong>
         {(match.minute || (!hasScore && match.time)) && <small>{match.minute ? `${match.minute}'` : "Uhr"}</small>}
-        {!live && !compact && match.date && <em>{new Date(`${match.date}T12:00:00`).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}</em>}
+        {!live && match.date && <em>{new Date(`${match.date}T12:00:00`).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}</em>}
         {clickable && <b>{selected ? "Match-Center offen" : "Tippen"}</b>}
       </div>
       <TeamBlock team={match.awayTeam} align="right" />
@@ -574,13 +574,21 @@ function TeamModal({ team, onClose, played, live, upcoming }) {
   useEffect(() => {
     const handler = e => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
-    const prev = document.body.style.overflow;
+    // iOS-kompatibler Scroll-Lock: body fixieren damit Hintergrund nicht scrollt
+    const scrollY = window.scrollY;
     document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
     return () => {
       window.removeEventListener("keydown", handler);
-      document.body.style.overflow = prev;
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.top = "";
+      document.body.style.width = "";
+      window.scrollTo(0, scrollY);
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
