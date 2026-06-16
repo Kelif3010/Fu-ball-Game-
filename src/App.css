@@ -1696,11 +1696,19 @@ body {
 .group-table-row span:first-child {
   text-align: left;
   justify-content: flex-start;
-  gap: 4px;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 1px;
   font-size: 11px;
+  overflow: hidden;
+}
+
+.group-team-name {
+  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  width: 100%;
 }
 
 .group-table-row .pts {
@@ -1710,6 +1718,7 @@ body {
 }
 
 .group-owner {
+  display: block;
   font-size: 9px;
   font-weight: 900;
 }

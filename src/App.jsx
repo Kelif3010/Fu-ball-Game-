@@ -336,7 +336,7 @@ function GroupsPanel({ live, played, upcoming }) {
                 const owner = ownerOf(row.team);
                 return (
                   <div className={`group-table-row${i === 0 ? " leader" : ""}`} key={row.team}>
-                    <span>{displayTeamName(row.team)}{owner && <span className="group-owner" style={{ color: COLORS[owner] }}>{owner}</span>}</span>
+                    <span><span className="group-team-name">{displayTeamName(row.team)}</span>{owner && <span className="group-owner" style={{ color: COLORS[owner] }}>{owner}</span>}</span>
                     <span>{row.played}</span><span>{row.won}</span><span>{row.drawn}</span><span>{row.lost}</span>
                     <span>{row.gf}:{row.ga}</span><span className="pts">{row.pts}</span>
                   </div>
