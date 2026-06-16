@@ -1,6 +1,34 @@
-export function formatDate(dateStr) {
+function relativeDayLabel(dateStr) {
+  const date = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.round((startOfDate - startOfToday) / 86400000);
+
+  const futureLabels = {
+    1: "Morgen",
+    2: "in zwei Tagen",
+    3: "in drei Tagen",
+    4: "in vier Tagen",
+    5: "in fünf Tagen",
+    6: "in sechs Tagen",
+  };
+
+  if (diffDays === -1) return "Gestern";
+  if (diffDays === 0) return "Heute";
+  return futureLabels[diffDays] || "";
+}
+
+export function formatDate(dateStr, options = {}) {
   if (!dateStr) return "Datum offen";
-  return new Date(`${dateStr}T12:00:00`).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
+  const label = relativeDayLabel(dateStr);
+  const date = new Date(`${dateStr}T12:00:00`);
+  const dateText = date.toLocaleDateString("de-DE", options.compact
+    ? { day: "2-digit", month: "2-digit" }
+    : { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
+  return label ? `${label} · ${dateText}` : dateText;
 }
 
 export function formatCountdown(seconds) {
