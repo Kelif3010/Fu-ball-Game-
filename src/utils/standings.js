@@ -204,6 +204,22 @@ export function buildMaxPossibleRows(standings, live, upcoming) {
   });
 }
 
+function beatsOnTieBreak(a, b) {
+  return a.td > b.td || (a.td === b.td && a.gf > b.gf);
+}
+
+function buildOvertakeRequirement(source, target) {
+  const pointsGap = target.pts - source.pts;
+  const tdGap = target.td - source.td;
+  const gfGap = target.gf - source.gf;
+  return {
+    pointsNeeded: Math.max(0, pointsGap + 1),
+    pointsToTie: Math.max(0, pointsGap),
+    tdNeededAtTie: Math.max(0, tdGap + 1),
+    gfNeededAtTie: Math.max(0, gfGap + 1),
+  };
+}
+
 export function buildMyAnalysis(person, standings, liveProjectionStandings, live, upcoming) {
   const rowIndex = standings.findIndex(item => item.person === person);
   const row = standings[rowIndex] || null;
@@ -246,19 +262,24 @@ export function buildMyAnalysis(person, standings, liveProjectionStandings, live
 
   const currentThreats = futureThreats
     .filter(item => item.person !== person && item.rank > (standingsByPerson[person]?.rank || 0))
-    .filter(item => item.futurePoints > maxPossiblePoints || (item.futurePoints === maxPossiblePoints && item.td > row.td))
+    .filter(item => item.futurePoints > maxPossiblePoints || (item.futurePoints === maxPossiblePoints && beatsOnTieBreak(item, row)))
     .sort((a, b) => b.futurePoints - a.futurePoints || b.rank - a.rank)
-    .slice(0, 3);
+    .slice(0, 3)
+    .map(item => ({
+      ...item,
+      ...buildOvertakeRequirement(item, row),
+    }));
 
   const reachable = standings
-    .filter(item => item.person !== person && item.rank < (standingsByPerson[item.person]?.rank || 999))
+    .filter(item => item.person !== person && item.rank < (standingsByPerson[person]?.rank || 999))
     .map(item => ({
       ...item,
       rank: standingsByPerson[item.person]?.rank || 999,
       open: openMatchMap[item.person]?.length || 0,
+      ...buildOvertakeRequirement(row, item),
     }))
-    .filter(item => maxPossiblePoints > item.pts || (maxPossiblePoints === item.pts && row.td > item.td))
-    .sort((a, b) => a.rank - b.rank || b.pts - a.pts || b.td - a.td)
+    .filter(item => maxPossiblePoints > item.pts || (maxPossiblePoints === item.pts && beatsOnTieBreak(row, item)))
+    .sort((a, b) => a.rank - b.rank || b.pts - a.pts || b.td - a.td || b.gf - a.gf)
     .slice(0, 3);
 
   const nextImportantMatch = openMatches

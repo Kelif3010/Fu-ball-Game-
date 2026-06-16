@@ -504,9 +504,9 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
           <span className="scenario-icon">🏆</span>
           <div className="scenario-content">
             <strong>Best-Case: Platz {analysis?.winAllRank ?? selectedRank + 1}</strong>
-            <p>Wenn du alle <b>{analysis?.openCount ?? 0}</b> Spiele gewinnst → <b>{analysis?.maxPossiblePoints ?? row.pts}P</b></p>
+            <p>Wenn du alle <b>{analysis?.openCount ?? 0}</b> Spiele gewinnst, holst du <b>{analysis?.maxExtraPoints ?? 0} Punkte</b> dazu.</p>
           </div>
-          <span className="scenario-badge">+{analysis?.maxExtraPoints ?? 0}P</span>
+          <span className="scenario-badge">+{analysis?.maxExtraPoints ?? 0} Punkte</span>
         </article>
         {canOvertakeList.length === 0
           ? <article className="scenario-card safe">
@@ -521,7 +521,7 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
                 <span className="scenario-icon">⚠️</span>
                 <div className="scenario-content">
                   <strong style={{ color: COLORS[threat.person] }}>{threat.person} kann vorbeiziehen</strong>
-                  <p>Liegt <b>{row.pts - threat.pts}P</b> zurück · max. <b>{threat.futurePoints}P</b> möglich</p>
+                  <p>{formatNeedLine(threat.pointsNeeded, threat.tdNeededAtTie)}</p>
                 </div>
                 <span className="scenario-badge threat">Gefahr</span>
               </article>
@@ -540,7 +540,7 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
                 <span className="scenario-icon">🎯</span>
                 <div className="scenario-content">
                   <strong style={{ color: COLORS[target.person] }}>{target.person} ist erreichbar</strong>
-                  <p>Aktuell Platz {target.rank} mit <b>{target.pts}P</b> · du hast max. <b>{analysis?.maxPossiblePoints}P</b></p>
+                  <p>{formatNeedLine(target.pointsNeeded, target.tdNeededAtTie)}</p>
                 </div>
                 <span className="scenario-badge target">Erreichbar</span>
               </article>
@@ -560,6 +560,13 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
 
 function EmptyState({ title, text, compact = false }) {
   return <div className={`empty-state ${compact ? "compact" : ""}`}><strong>{title}</strong><p>{text}</p></div>;
+}
+
+function formatNeedLine(pointsNeeded, tdNeededAtTie) {
+  const pointsText = pointsNeeded === 1 ? "1 Punkt" : `${pointsNeeded} Punkte`;
+  if (tdNeededAtTie <= 0) return `${pointsText} reichen bei Punktgleichheit.`;
+  const tdText = tdNeededAtTie === 1 ? "1 Tor Unterschied" : `${tdNeededAtTie} Tore Unterschied`;
+  return `${pointsText} und bei Punktgleichheit +${tdNeededAtTie} TD (${tdText}).`;
 }
 
 function TeamModal({ team, onClose, played, live, upcoming }) {
