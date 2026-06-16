@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import HeadToHead from "./HeadToHead";
 import { PARTICIPANTS, FLAGS, DE, COLORS, displayTeamName } from "./shared";
 import { formatDate, formatCountdown, statusLabel, rankLabel, tdColor, movementColor, pointsMovementText, rankMovementText } from './utils/format.js';
-import { buildTeamStats, buildStandings, compareStandingRows, rankMap, buildHeadToHeadStats, buildPointsTimeline, buildFormComparisonRows, getLastResultsForPerson, buildFormCurveRows, buildMyAnalysis, buildOpenMatchMap, buildMaxPossibleRows, getPersonMatches, getMatchTitle, buildGroupData, ownerOf, matchSortAsc, matchSortDesc } from './utils/standings.js';
+import { buildTeamStats, buildStandings, compareStandingRows, rankMap, buildHeadToHeadStats, buildFormComparisonRows, buildMyAnalysis, buildOpenMatchMap, buildMaxPossibleRows, getPersonMatches, getMatchTitle, buildGroupData, ownerOf, matchSortAsc, matchSortDesc } from './utils/standings.js';
 import { useScores } from './hooks/useScores.js';
 import { useStandings } from './hooks/useStandings.js';
 import './App.css';
@@ -30,7 +30,7 @@ const SUB_TABS = {
     { id: "max", label: "Max Punkte" },
     { id: "form", label: "Form" },
     { id: "h2h", label: "Head-to-Head" },
-    { id: "verlauf", label: "Verlauf" },
+    { id: "verlauf", label: "Stärke" },
   ],
 };
 
@@ -368,16 +368,10 @@ function GamesPanel({ subTab, upcomingByDate, played, live, upcoming }) {
   </div>;
 }
 
-function StatsPanel({ subTab, maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson, played }) {
-  if (subTab === "form") {
-    return <StatsFormCard rows={formRows} />;
-  }
-  if (subTab === "h2h") {
-    return <HeadToHead stats={h2hStats} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson} />;
-  }
-  if (subTab === "verlauf") {
-    return <PointsTimelineCard played={played} />;
-  }
+function StatsPanel({ subTab, maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson, standings, teamStats }) {
+  if (subTab === "form") return <StatsFormCard rows={formRows} />;
+  if (subTab === "h2h") return <HeadToHead stats={h2hStats} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson} />;
+  if (subTab === "verlauf") return <TeamStrengthCard standings={standings} teamStats={teamStats} />;
   return <StatsMaxPointsCard rows={maxPossibleRows} />;
 }
 
@@ -411,59 +405,38 @@ function StatsMaxPointsCard({ rows }) {
   </article>;
 }
 
-function PointsTimelineCard({ played }) {
-  const { dates, series } = buildPointsTimeline(played);
-  if (!dates.length) return <EmptyState title="Noch keine Verlaufsdaten" text="Sobald Spiele gespielt wurden, erscheint hier der Punkteverlauf." />;
-
-  const W = 300, H = 160, PAD = { top: 10, right: 10, bottom: 30, left: 30 };
-  const chartW = W - PAD.left - PAD.right;
-  const chartH = H - PAD.top - PAD.bottom;
-  const maxPts = Math.max(1, ...Object.values(series).flat());
-  const xScale = i => PAD.left + (i / Math.max(1, dates.length - 1)) * chartW;
-  const yScale = v => PAD.top + chartH - (v / maxPts) * chartH;
-  const persons = Object.keys(PARTICIPANTS);
-
-  const yTicks = [0, Math.round(maxPts / 2), maxPts];
-  const xTicks = dates.length <= 6
-    ? dates.map((_, i) => i)
-    : [0, Math.floor((dates.length - 1) / 2), dates.length - 1];
-
+function TeamStrengthCard({ standings, teamStats }) {
+  if (!standings.length || !teamStats) return <EmptyState title="Keine Team-Daten" text="Sobald Spiele gespielt wurden, erscheint hier die Team-Stärke." />;
+  const rows = standings.map((row, index) => {
+    const teams = row.teams.map(team => ({ team, ...(teamStats[team] || { gf: 0, ga: 0, pts: 0, played: 0, won: 0, drawn: 0, lost: 0 }) }));
+    const totalGf = teams.reduce((s, t) => s + t.gf, 0);
+    const totalGa = teams.reduce((s, t) => s + t.ga, 0);
+    const bestTeam = [...teams].sort((a, b) => b.gf - a.gf)[0];
+    return { ...row, rank: index + 1, teams, totalGf, totalGa, bestTeam };
+  }).sort((a, b) => b.totalGf - a.totalGf);
+  const maxGf = Math.max(1, ...rows.map(r => r.totalGf));
   return <article className="what-card analysis-card stats-card">
     <div className="analysis-head">
       <div>
-        <h3>📉 Punkteverlauf</h3>
-        <p>Kumulative Punkte pro Spieltag über den bisherigen Turnierverlauf.</p>
+        <h3>⚽ Team-Stärke</h3>
+        <p>Wie viele Tore haben die Teams jedes Teilnehmers bisher geschossen?</p>
       </div>
-      <span className="analysis-badge">Alle</span>
+      <span className="analysis-badge">Alle Teams</span>
     </div>
-    <svg className="timeline-svg" viewBox={`0 0 ${W} ${H}`} aria-label="Punkteverlauf-Diagramm">
-      {yTicks.map(v => (
-        <g key={v}>
-          <line x1={PAD.left} y1={yScale(v)} x2={W - PAD.right} y2={yScale(v)} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-          <text x={PAD.left - 4} y={yScale(v)} fill="#475569" fontSize="8" textAnchor="end" dominantBaseline="middle">{v}</text>
-        </g>
-      ))}
-      {xTicks.map(i => (
-        <text key={i} x={xScale(i)} y={H - PAD.bottom + 10} fill="#475569" fontSize="8" textAnchor="middle">{i + 1}</text>
-      ))}
-      {persons.map(p => {
-        const pts = series[p];
-        if (!pts.length) return null;
-        const points = pts.map((v, i) => `${xScale(i)},${yScale(v)}`).join(" ");
-        return (
-          <g key={p}>
-            <polyline points={points} fill="none" stroke={COLORS[p]} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
-            {pts.map((v, i) => (
-              <circle key={i} cx={xScale(i)} cy={yScale(v)} r="3" fill={COLORS[p]} opacity="0.85" />
-            ))}
-          </g>
-        );
-      })}
-    </svg>
-    <div className="timeline-legend">
-      {persons.map(p => (
-        <span key={p} style={{ color: COLORS[p] }}>● {p} {series[p].at(-1) ?? 0}P</span>
-      ))}
+    <div className="strength-list">
+      {rows.map((row, i) => <div className="strength-row" key={row.person}>
+        <span className="strength-rank">{i + 1}.</span>
+        <div className="strength-info">
+          <div className="strength-head">
+            <strong style={{ color: COLORS[row.person] }}>{row.person}</strong>
+            <span className="strength-goals">{row.totalGf} Tore · TD {row.totalGf - row.totalGa >= 0 ? "+" : ""}{row.totalGf - row.totalGa}</span>
+          </div>
+          <div className="strength-bar-wrap">
+            <div className="strength-bar" style={{ width: `${row.totalGf === 0 ? 0 : Math.max(4, Math.round((row.totalGf / maxGf) * 100))}%`, background: COLORS[row.person] }} />
+          </div>
+          {row.bestTeam?.gf > 0 && <small className="strength-best">Bestes Team: {displayTeamName(row.bestTeam.team)} ({row.bestTeam.gf} Tore)</small>}
+        </div>
+      </div>)}
     </div>
   </article>;
 }
@@ -494,36 +467,6 @@ function StatsFormCard({ rows }) {
   </article>;
 }
 
-function FormCurveCard({ selectedPerson, standings, played, analysis }) {
-  const rows = buildFormCurveRows(selectedPerson, standings, analysis);
-  const hasAnyForm = rows.some(person => getLastResultsForPerson(person, played).length > 0);
-  if (!hasAnyForm) {
-    return <article className="what-card analysis-card"><h3>🔥 Formkurve letzte 5 Spiele</h3><p className="form-empty">Noch keine Formdaten verfügbar.</p></article>;
-  }
-  return <article className="what-card analysis-card">
-    <div className="analysis-head">
-      <div>
-        <h3>🔥 Formkurve letzte 5 Spiele</h3>
-        <p>Die letzten Ergebnisse aus den bereits gespielten Partien.</p>
-      </div>
-      <span className="analysis-badge">Letzte 5</span>
-    </div>
-    <div className="form-list">
-      {rows.map(person => {
-        const results = getLastResultsForPerson(person, played);
-        return <div className="form-row" key={person}>
-          <div className="form-name">
-            <strong>{person}</strong>
-            <small>{results.length ? `${results.length} Spiele` : "Keine Spiele"}</small>
-          </div>
-          <div className="form-results">
-            {results.length > 0 ? results.map(({ emoji, match }, index) => <span key={`${person}-${match.id || index}-${index}`} className={`form-result ${emoji === "✅" ? "win" : emoji === "❌" ? "loss" : "draw"}`} title={`${displayTeamName(match.homeTeam)} vs ${displayTeamName(match.awayTeam)}`}>{emoji}</span>) : <span className="form-result muted">-</span>}
-          </div>
-        </div>;
-      })}
-    </div>
-  </article>;
-}
 
 function PersonSelector({ selected, onSelect }) {
   return <div className="person-selector">{Object.keys(PARTICIPANTS).map(person => <button key={person} className={selected === person ? "active" : ""} onClick={() => onSelect(person)} style={{ "--accent": COLORS[person] }}>{person}</button>)}</div>;
@@ -552,39 +495,62 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
         </div>
         <span className="analysis-badge">{analysis?.rowIndex === 0 ? "Aktuell 1." : `Aktuell #${Math.max(1, selectedRank + 1)}`}</span>
       </div>
-      <div className="analysis-pills">
-        <InfoPill label="Gespielt" value={analysis ? `${row.played}` : "0"} color={COLORS[row.person]} />
-        <InfoPill label="Offen" value={analysis ? `${analysis.openCount}` : "0"} color="#fbbf24" />
-        <InfoPill label="Max" value={analysis ? `${analysis.maxPossiblePoints}` : `${row.pts}`} color="#34d399" />
-        <InfoPill label="Max Platz" value={analysis ? `#${analysis.winAllRank}` : `#${selectedRank + 1}`} color="#f59e0b" />
-      </div>
-      <div className="analysis-list">
-        <div className="analysis-row">
-          <span>📈 Spiele / Potential</span>
-          <strong className="ok">{analysis?.gapText || "Keine Daten"}</strong>
-        </div>
-        <div className="analysis-row">
-          <span>🔥 Wichtigstes nächstes Spiel</span>
-          <strong>{nextMatch ? `${getMatchTitle(nextMatch)}${nextMatchOpponent ? ` · ${nextMatchOpponent}` : ""}` : "Kein offenes Spiel gefunden"}</strong>
-        </div>
-        <div className="analysis-row">
-          <span>⚠️ Kann dich überholen</span>
-          <strong className={canOvertakeList.length ? "warn" : "ok"}>{analysis?.canOvertakeText || "Niemand"}</strong>
-        </div>
-        <div className="analysis-chip-row">
-          {canOvertakeList.length > 0 ? canOvertakeList.map(item => <span key={item.person} className="analysis-chip">{item.person} · {item.futurePoints}P max</span>) : <span className="analysis-chip muted">Mit deinem Maximalwert keiner mehr</span>}
-        </div>
-        <div className="analysis-row">
-          <span>🎯 Kannst du überholen</span>
-          <strong className="ok">{analysis?.overtakeText || "Aktuell niemand"}</strong>
-        </div>
-        <div className="analysis-chip-row">
-          {reachableList.length > 0 ? reachableList.map(item => <span key={item.person} className="analysis-chip good">{item.person} · {item.pts}P aktuell</span>) : <span className="analysis-chip muted">Alle vor dir liegen zu weit weg</span>}
-        </div>
+      <div className="scenario-cards">
+        <article className="scenario-card best-case">
+          <span className="scenario-icon">🏆</span>
+          <div className="scenario-content">
+            <strong>Best-Case: Platz {analysis?.winAllRank ?? selectedRank + 1}</strong>
+            <p>Wenn du alle <b>{analysis?.openCount ?? 0}</b> Spiele gewinnst → <b>{analysis?.maxPossiblePoints ?? row.pts}P</b></p>
+          </div>
+          <span className="scenario-badge">+{analysis?.maxExtraPoints ?? 0}P</span>
+        </article>
+        {canOvertakeList.length === 0
+          ? <article className="scenario-card safe">
+              <span className="scenario-icon">✅</span>
+              <div className="scenario-content">
+                <strong>Platz {selectedRank + 1} ist sicher</strong>
+                <p>Niemand kann dich mit seinen restlichen Spielen mehr überholen.</p>
+              </div>
+            </article>
+          : canOvertakeList.slice(0, 2).map(threat => (
+              <article key={threat.person} className="scenario-card threat">
+                <span className="scenario-icon">⚠️</span>
+                <div className="scenario-content">
+                  <strong style={{ color: COLORS[threat.person] }}>{threat.person} kann vorbeiziehen</strong>
+                  <p>Liegt <b>{row.pts - threat.pts}P</b> zurück · max. <b>{threat.futurePoints}P</b> möglich</p>
+                </div>
+                <span className="scenario-badge threat">Gefahr</span>
+              </article>
+            ))
+        }
+        {reachableList.length === 0
+          ? <article className="scenario-card muted">
+              <span className="scenario-icon">🎯</span>
+              <div className="scenario-content">
+                <strong>Niemand in Reichweite</strong>
+                <p>Alle Teilnehmer vor dir liegen außer Reichweite.</p>
+              </div>
+            </article>
+          : reachableList.slice(0, 2).map(target => (
+              <article key={target.person} className="scenario-card target">
+                <span className="scenario-icon">🎯</span>
+                <div className="scenario-content">
+                  <strong style={{ color: COLORS[target.person] }}>{target.person} ist erreichbar</strong>
+                  <p>Aktuell Platz {target.rank} mit <b>{target.pts}P</b> · du hast max. <b>{analysis?.maxPossiblePoints}P</b></p>
+                </div>
+                <span className="scenario-badge target">Erreichbar</span>
+              </article>
+            ))
+        }
       </div>
     </article>
-    <FormCurveCard selectedPerson={row.person} standings={standings} played={played} analysis={analysis} />
-    <section className="section-block"><h2>Nächstes Spiel</h2>{nextMatch ? <ScoreCard match={nextMatch} live={live.includes(nextMatch)} compact /> : <EmptyState title="Kein nächstes Spiel gefunden" text="Aktuell liefert die API kein anstehendes Spiel für diesen Teilnehmer." compact />}</section>
+    <section className="section-block">
+      <h2>Nächstes Spiel</h2>
+      {nextMatch
+        ? <>{nextMatch.date && <p className="next-match-date">{formatDate(nextMatch.date)}</p>}<ScoreCard match={nextMatch} live={live.includes(nextMatch)} compact /></>
+        : <EmptyState title="Kein nächstes Spiel gefunden" text="Aktuell liefert die API kein anstehendes Spiel für diesen Teilnehmer." compact />
+      }
+    </section>
   </div>;
 }
 
@@ -655,7 +621,7 @@ export default function App() {
   } = useScores();
 
   const {
-    standings, officialRanks, liveProjectionStandings, leaderChange,
+    teamStats, standings, officialRanks, liveProjectionStandings, leaderChange,
     upcomingByDate, statsMaxPossibleRows, statsFormRows, h2hStats,
   } = useStandings({ played, live, upcoming });
 
@@ -684,7 +650,7 @@ export default function App() {
   } else if (tab === "spiele") {
     screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} upcoming={upcoming} />;
   } else if (tab === "stats") {
-    screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} played={played} />;
+    screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} standings={standings} teamStats={teamStats} />;
   } else if (tab === "mein") {
     screen = <MyPanel selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} standings={standings} liveProjectionStandings={liveProjectionStandings} live={live} upcoming={upcoming} played={played} />;
   }
