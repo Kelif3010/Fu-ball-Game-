@@ -13,5 +13,14 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
     navigator.serviceWorker.register("/sw.js").catch(() => {
       // App bleibt auch ohne Service Worker normal nutzbar.
     });
+
+    // Wenn ein neuer SW aktiviert wird (Update), Seite automatisch neu laden.
+    // hadController stellt sicher dass nur bei Updates neu geladen wird,
+    // nicht beim allerersten Öffnen der App.
+    let hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (hadController) window.location.reload();
+      hadController = true;
+    });
   });
 }
