@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import HeadToHead from "./HeadToHead";
 import { PARTICIPANTS, FLAGS, DE, COLORS, displayTeamName, FIFA_RANKS } from "./shared";
 import { formatDate, formatCountdown, statusLabel, rankLabel, tdColor, movementColor, pointsMovementText, rankMovementText } from './utils/format.js';
@@ -97,13 +97,13 @@ function Header({ loading, updated, liveCount, playedCount, upcomingCount, secon
   </header>;
 }
 
-function BottomNav({ active, onChange, liveCount }) {
-  return <nav className="bottom-nav" aria-label="Hauptnavigation">
+function BottomNav({ active, onChange, liveCount, compact = false }) {
+  return <nav className={`bottom-nav${compact ? " nav-compact" : ""}`} aria-label="Hauptnavigation">
     {NAV_ITEMS.map(item => <button key={item.id} className={`bottom-nav-item ${active === item.id ? "active" : ""}`} onClick={() => onChange(item.id)}>
       <span className="nav-icon">{item.icon}</span>
-      <span>{item.label}</span>
-      {item.id === "live" && liveCount > 0 && <em>{liveCount}</em>}
-      <i />
+      {!compact && <span>{item.label}</span>}
+      {!compact && item.id === "live" && liveCount > 0 && <em>{liveCount}</em>}
+      {!compact && <i />}
     </button>)}
   </nav>;
 }
@@ -641,6 +641,25 @@ export default function App() {
   const [selectedH2hPerson, setSelectedH2hPerson] = useState("Ken");
   const [prevRankSnapshot] = useState(() => loadRankSnapshot());
   const [selectedTeam, setSelectedTeam] = useState(null);
+  const [navCompact, setNavCompact] = useState(false);
+
+  useEffect(() => {
+    let lastY = 0;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (y > lastY && y > 80) setNavCompact(true);
+      else if (y < lastY - 10 || y < 30) setNavCompact(false);
+      lastY = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const handleTabChange = useCallback((id) => {
+    setTab(id);
+    setNavCompact(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
 
   useEffect(() => {
     if (standings.length > 0 && updated) saveRankSnapshot(standings);
@@ -678,7 +697,7 @@ export default function App() {
         {error && <div className="top-alert error">❌ {error}</div>}
         {screen}
       </div>
-      <BottomNav active={tab} onChange={setTab} liveCount={live.length} />
+      <BottomNav active={tab} onChange={handleTabChange} liveCount={live.length} compact={navCompact} />
       {selectedTeam && <TeamModal team={selectedTeam} onClose={() => setSelectedTeam(null)} played={played} live={live} upcoming={upcoming} />}
     </section>
   </main>;

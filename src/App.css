@@ -172,16 +172,31 @@ body {
 .bottom-nav {
   position: sticky;
   bottom: 0;
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  display: flex;
   gap: 0;
   background: #060d1d;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding: 7px 6px max(9px, env(safe-area-inset-bottom));
   z-index: 5;
+  transition: padding 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              border-radius 0.35s ease;
+}
+
+.bottom-nav.nav-compact {
+  padding: 5px 14px max(8px, env(safe-area-inset-bottom));
+  justify-content: flex-start;
+  border-top: 0;
+  border-radius: 999px;
+  margin: 0 12px max(6px, env(safe-area-inset-bottom));
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
 .bottom-nav-item {
+  flex: 1;
   position: relative;
   border: 0;
   background: transparent;
@@ -195,6 +210,28 @@ body {
   font-size: 10px;
   font-weight: 900;
   cursor: pointer;
+  overflow: hidden;
+  max-width: 120px;
+  transition: max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.25s ease,
+              padding 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              flex 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-compact .bottom-nav-item:not(.active) {
+  max-width: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  flex: 0;
+}
+
+.nav-compact .bottom-nav-item.active {
+  flex: 0 0 auto;
+  max-width: 46px;
+  padding: 7px 13px;
+  background: rgba(251, 191, 36, 0.12);
+  border-radius: 999px;
 }
 
 .bottom-nav-item .nav-icon {
