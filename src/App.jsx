@@ -61,11 +61,13 @@ const SUB_TABS = {
   spiele: [
     { id: "demnaechst", label: "Demnächst" },
     { id: "ergebnisse", label: "Ergebnisse" },
+    { id: "gruppen", label: "Gruppen" },
   ],
   stats: [
     { id: "max", label: "Max Punkte" },
     { id: "form", label: "Form" },
     { id: "h2h", label: "Head-to-Head" },
+    { id: "verlauf", label: "Verlauf" },
   ],
 };
 
@@ -300,7 +302,7 @@ function SubTabs({ activeTab, activeSubTab, onChange, liveCount }) {
   </nav>;
 }
 
-function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, officialMeta = null, prevRankSnapshot = null }) {
+function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, officialMeta = null, prevRankSnapshot = null, onTeamClick = null }) {
   const progress = maxPts > 0 ? Math.max(row.pts === 0 ? 0 : 6, Math.round((row.pts / maxPts) * 100)) : 0;
   const currentRank = index + 1;
   const officialRank = officialMeta?.rank || currentRank;
@@ -335,16 +337,29 @@ function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, off
         <StatChip label="Tore" value={`${row.gf}:${row.ga}`} />
         <StatChip label="TD" value={`${row.td > 0 ? "+" : ""}${row.td}`} color={tdColor(row.td)} />
       </div>
-      <div className="team-pill-grid">{row.teams.map(team => <span key={team}>{displayTeamName(team)}</span>)}</div>
+      <div className="team-pill-grid">
+        {row.teams.map(team => (
+          <span
+            key={team}
+            onClick={e => { e.stopPropagation(); onTeamClick && onTeamClick(team); }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onTeamClick && onTeamClick(team); } }}
+            style={{ cursor: "pointer" }}
+          >
+            {displayTeamName(team)}
+          </span>
+        ))}
+      </div>
     </div>
   </article>;
 }
 
-function StandingsPanel({ standings, liveMode = false, officialRanks = {}, openPerson, setOpenPerson, prevRankSnapshot = null }) {
+function StandingsPanel({ standings, liveMode = false, officialRanks = {}, openPerson, setOpenPerson, prevRankSnapshot = null, onTeamClick = null }) {
   const maxPts = Math.max(1, ...standings.map(row => row.pts));
   if (!standings.length) return <EmptyState title="Noch keine Tabelle" text="Sobald Ergebnisse geladen werden, erscheint hier die Rangliste." />;
   return <div className="standings-list">
-    {standings.map((row, index) => <StandingRow key={row.person} row={row} index={index} maxPts={maxPts} open={openPerson === row.person} onToggle={() => setOpenPerson(openPerson === row.person ? "" : row.person)} liveMode={liveMode} officialMeta={liveMode ? officialRanks[row.person] : null} prevRankSnapshot={prevRankSnapshot} />)}
+    {standings.map((row, index) => <StandingRow key={row.person} row={row} index={index} maxPts={maxPts} open={openPerson === row.person} onToggle={() => setOpenPerson(openPerson === row.person ? "" : row.person)} liveMode={liveMode} officialMeta={liveMode ? officialRanks[row.person] : null} prevRankSnapshot={prevRankSnapshot} onTeamClick={onTeamClick} />)}
   </div>;
 }
 
@@ -466,9 +481,86 @@ function ProjectionPanel({ live, liveProjectionStandings, officialRanks, openPer
   </div>;
 }
 
-function GamesPanel({ subTab, upcomingByDate, played, live }) {
+function buildGroupData(live, played, upcoming) {
+  const allMatches = [...played, ...live, ...upcoming];
+  const groups = {};
+  for (const m of allMatches) {
+    if (!m.group) continue;
+    if (!groups[m.group]) groups[m.group] = { group: m.group, teams: new Set(), matches: [] };
+    groups[m.group].teams.add(m.homeTeam);
+    groups[m.group].teams.add(m.awayTeam);
+    groups[m.group].matches.push(m);
+  }
+  const finishedMatches = [...played, ...live.filter(m => Number.isFinite(Number(m.homeGoals)))];
+  const allTeamStats = buildTeamStats(finishedMatches);
+  return Object.entries(groups)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([groupLetter, data]) => {
+      const teams = [...data.teams];
+      const standings = teams
+        .map(team => ({ team, ...(allTeamStats[team] || { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, pts: 0 }), td: (allTeamStats[team]?.gf || 0) - (allTeamStats[team]?.ga || 0) }))
+        .sort((a, b) => b.pts - a.pts || b.td - a.td || b.gf - a.gf || a.team.localeCompare(b.team));
+      const sortedMatches = [...data.matches].sort((a, b) => `${a.date || "9999"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999"} ${b.time || "99:99"}`));
+      return { group: groupLetter, standings, matches: sortedMatches };
+    });
+}
+
+function GroupsPanel({ live, played, upcoming }) {
+  const liveIds = new Set(live.map(m => m.id).filter(Boolean));
+  const groupData = buildGroupData(live, played, upcoming);
+  if (groupData.length === 0) return <EmptyState title="Keine Gruppen-Daten" text="Sobald die API Gruppenspiele liefert, erscheinen hier alle Gruppen." />;
+  return <div className="card-stack">
+    {groupData.map(({ group, standings, matches }) => (
+      <section className="group-section" key={group}>
+        <div className="group-header">
+          <h2>Gruppe {group}</h2>
+          <div className="group-header-line" />
+        </div>
+        <div className="group-table">
+          <div className="group-table-head">
+            <span>Team</span>
+            <span>Sp</span>
+            <span>S</span>
+            <span>U</span>
+            <span>N</span>
+            <span>Tore</span>
+            <span>Pkt</span>
+          </div>
+          {standings.map((row, i) => {
+            const owner = ownerOf(row.team);
+            return (
+              <div className={`group-table-row${i === 0 ? " leader" : ""}`} key={row.team}>
+                <span>
+                  {displayTeamName(row.team)}
+                  {owner && <span className="group-owner" style={{ color: COLORS[owner] }}>{owner}</span>}
+                </span>
+                <span>{row.played}</span>
+                <span>{row.won}</span>
+                <span>{row.drawn}</span>
+                <span>{row.lost}</span>
+                <span>{row.gf}:{row.ga}</span>
+                <span className="pts">{row.pts}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="card-stack slim">
+          {matches.map((m, i) => {
+            const isLive = liveIds.has(m.id);
+            return <ScoreCard key={`grp-${group}-${m.id || i}`} match={m} live={isLive} compact />;
+          })}
+        </div>
+      </section>
+    ))}
+  </div>;
+}
+
+function GamesPanel({ subTab, upcomingByDate, played, live, upcoming }) {
   if (subTab === "ergebnisse") {
     return <div className="card-stack">{played.length === 0 ? <EmptyState title="Noch keine Ergebnisse" text="Beendete Spiele erscheinen hier automatisch." /> : played.map((m, i) => <ScoreCard key={`played-${m.id || i}`} match={m} />)}</div>;
+  }
+  if (subTab === "gruppen") {
+    return <GroupsPanel live={live} played={played} upcoming={upcoming} />;
   }
   const dates = Object.keys(upcomingByDate);
   return <div className="card-stack">
@@ -478,12 +570,15 @@ function GamesPanel({ subTab, upcomingByDate, played, live }) {
   </div>;
 }
 
-function StatsPanel({ subTab, maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson }) {
+function StatsPanel({ subTab, maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson, played }) {
   if (subTab === "form") {
     return <StatsFormCard rows={formRows} />;
   }
   if (subTab === "h2h") {
     return <HeadToHead stats={h2hStats} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson} />;
+  }
+  if (subTab === "verlauf") {
+    return <PointsTimelineCard played={played} />;
   }
   return <StatsMaxPointsCard rows={maxPossibleRows} />;
 }
@@ -550,6 +645,33 @@ function getLastResultsForPerson(person, played, limit = 5) {
   });
 }
 
+function buildPointsTimeline(played) {
+  const sorted = [...played].sort(matchSortAsc);
+  const dateSet = [];
+  const seen = new Set();
+  for (const m of sorted) { if (m.date && !seen.has(m.date)) { seen.add(m.date); dateSet.push(m.date); } }
+
+  const persons = Object.keys(PARTICIPANTS);
+  const running = Object.fromEntries(persons.map(p => [p, 0]));
+  const series = Object.fromEntries(persons.map(p => [p, []]));
+
+  for (const date of dateSet) {
+    const dayMatches = sorted.filter(m => m.date === date);
+    for (const match of dayMatches) {
+      const hOwner = ownerOf(match.homeTeam);
+      const aOwner = ownerOf(match.awayTeam);
+      const hg = Number(match.homeGoals);
+      const ag = Number(match.awayGoals);
+      if (!Number.isFinite(hg) || !Number.isFinite(ag)) continue;
+      if (hg > ag) { if (hOwner) running[hOwner] += 3; }
+      else if (ag > hg) { if (aOwner) running[aOwner] += 3; }
+      else { if (hOwner) running[hOwner]++; if (aOwner) running[aOwner]++; }
+    }
+    persons.forEach(p => series[p].push(running[p]));
+  }
+  return { dates: dateSet, series };
+}
+
 function buildFormCurveRows(selectedPerson, standings, analysis) {
   const rows = [selectedPerson];
   if (analysis?.currentThreats?.length) rows.push(...analysis.currentThreats.map(item => item.person));
@@ -595,6 +717,63 @@ function StatsMaxPointsCard({ rows }) {
             <small>max</small>
           </div>
         </div>
+      ))}
+    </div>
+  </article>;
+}
+
+function PointsTimelineCard({ played }) {
+  const { dates, series } = buildPointsTimeline(played);
+  if (!dates.length) return <EmptyState title="Noch keine Verlaufsdaten" text="Sobald Spiele gespielt wurden, erscheint hier der Punkteverlauf." />;
+
+  const W = 300, H = 160, PAD = { top: 10, right: 10, bottom: 30, left: 30 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+  const maxPts = Math.max(1, ...Object.values(series).flat());
+  const xScale = i => PAD.left + (i / Math.max(1, dates.length - 1)) * chartW;
+  const yScale = v => PAD.top + chartH - (v / maxPts) * chartH;
+  const persons = Object.keys(PARTICIPANTS);
+
+  const yTicks = [0, Math.round(maxPts / 2), maxPts];
+  const xTicks = dates.length <= 6
+    ? dates.map((_, i) => i)
+    : [0, Math.floor((dates.length - 1) / 2), dates.length - 1];
+
+  return <article className="what-card analysis-card stats-card">
+    <div className="analysis-head">
+      <div>
+        <h3>📉 Punkteverlauf</h3>
+        <p>Kumulative Punkte pro Spieltag über den bisherigen Turnierverlauf.</p>
+      </div>
+      <span className="analysis-badge">Alle</span>
+    </div>
+    <svg className="timeline-svg" viewBox={`0 0 ${W} ${H}`} aria-label="Punkteverlauf-Diagramm">
+      {yTicks.map(v => (
+        <g key={v}>
+          <line x1={PAD.left} y1={yScale(v)} x2={W - PAD.right} y2={yScale(v)} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+          <text x={PAD.left - 4} y={yScale(v)} fill="#475569" fontSize="8" textAnchor="end" dominantBaseline="middle">{v}</text>
+        </g>
+      ))}
+      {xTicks.map(i => (
+        <text key={i} x={xScale(i)} y={H - PAD.bottom + 10} fill="#475569" fontSize="8" textAnchor="middle">{i + 1}</text>
+      ))}
+      {persons.map(p => {
+        const pts = series[p];
+        if (!pts.length) return null;
+        const points = pts.map((v, i) => `${xScale(i)},${yScale(v)}`).join(" ");
+        return (
+          <g key={p}>
+            <polyline points={points} fill="none" stroke={COLORS[p]} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
+            {pts.map((v, i) => (
+              <circle key={i} cx={xScale(i)} cy={yScale(v)} r="3" fill={COLORS[p]} opacity="0.85" />
+            ))}
+          </g>
+        );
+      })}
+    </svg>
+    <div className="timeline-legend">
+      {persons.map(p => (
+        <span key={p} style={{ color: COLORS[p] }}>● {p} {series[p].at(-1) ?? 0}P</span>
       ))}
     </div>
   </article>;
@@ -854,12 +1033,65 @@ function EmptyState({ title, text, compact = false }) {
   return <div className={`empty-state ${compact ? "compact" : ""}`}><strong>{title}</strong><p>{text}</p></div>;
 }
 
+function TeamModal({ team, onClose, played, live, upcoming }) {
+  const owner = ownerOf(team);
+  const allFinished = [...played, ...live.filter(m => Number.isFinite(Number(m.homeGoals)) && Number.isFinite(Number(m.awayGoals)))];
+  const stats = buildTeamStats(allFinished)[team] || { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, pts: 0 };
+  const td = stats.gf - stats.ga;
+  const teamMatches = [...played, ...live, ...upcoming]
+    .filter(m => m.homeTeam === team || m.awayTeam === team)
+    .sort(matchSortAsc);
+
+  useEffect(() => {
+    const handler = e => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="modal-panel" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2>{displayTeamName(team)}</h2>
+            {owner && <small style={{ color: COLORS[owner] }}>Gehört {owner}</small>}
+          </div>
+          <button className="modal-close" onClick={onClose} aria-label="Schließen">✕</button>
+        </div>
+        <div className="modal-body">
+          <div className="stat-grid">
+            <StatChip label="S" value={stats.won} color="#34d399" />
+            <StatChip label="U" value={stats.drawn} />
+            <StatChip label="N" value={stats.lost} color="#f87171" />
+            <StatChip label="Tore" value={`${stats.gf}:${stats.ga}`} />
+            <StatChip label="TD" value={td > 0 ? `+${td}` : `${td}`} color={td > 0 ? "#34d399" : td < 0 ? "#f87171" : "#94a3b8"} />
+          </div>
+          <div className="modal-matches-title">Alle Spiele ({teamMatches.length})</div>
+          <div className="card-stack">
+            {teamMatches.length === 0
+              ? <EmptyState title="Keine Spiele gefunden" text="Noch keine Matches für dieses Team verfügbar." />
+              : teamMatches.map((m, i) => (
+                  <ScoreCard
+                    key={m.id || i}
+                    match={m}
+                    live={live.some(l => l.id === m.id)}
+                    compact
+                  />
+                ))
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const STYLES = `
-*{box-sizing:border-box}body{margin:0;background:#05091a}.app-shell{min-height:100vh;background:radial-gradient(circle at top,#101b32 0,#05091a 45%,#040713 100%);color:#e2e8f0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:12px}.phone-frame{width:min(100%,430px);min-height:calc(100vh - 24px);margin:0 auto;background:#060d1d;border:1px solid rgba(255,255,255,.09);border-radius:28px;overflow:hidden;box-shadow:0 22px 70px rgba(0,0,0,.35);display:flex;flex-direction:column}.app-header{padding:18px 16px 12px;background:linear-gradient(180deg,#071126 0,#060d1d 100%);border-bottom:1px solid rgba(255,255,255,.055)}.header-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.app-header h1{margin:0;color:#fbbf24;font-size:24px;letter-spacing:-.7px;line-height:1.05}.app-header p{margin:6px 0 0;color:#64748b;font-size:12px;font-weight:700;line-height:1.35}.refresh-btn{width:38px;height:38px;border-radius:14px;border:1px solid rgba(245,158,11,.26);background:rgba(245,158,11,.1);color:#fbbf24;font-size:18px;font-weight:900;cursor:pointer;flex-shrink:0}.refresh-btn:disabled{opacity:.7;cursor:default}.header-meta-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}.header-meta-row>span{color:#94a3b8;font-size:11px;font-weight:700}.countdown-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,.11);border:1px solid rgba(245,158,11,.24);border-radius:999px;padding:5px 10px;color:#94a3b8;font-size:10px;font-weight:800}.countdown-pill strong{color:#fbbf24;font-size:12px;font-variant-numeric:tabular-nums}.countdown-dot{width:6px;height:6px;border-radius:50%;background:#fbbf24;animation:pulseDot 1.7s ease-in-out infinite}@keyframes pulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.78)}}.sub-tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.06);background:#060d1d}.sub-tabs button{flex:1;border:0;border-bottom:2px solid transparent;background:transparent;color:#64748b;padding:10px 8px;font-size:12px;font-weight:900;cursor:pointer;text-align:center}.sub-tabs button.active{color:#fbbf24;border-bottom-color:#fbbf24;background:rgba(245,158,11,.045)}.sub-tabs span{background:#ef4444;color:#fff;border-radius:999px;padding:1px 5px;font-size:9px;margin-left:4px}.content{flex:1;padding:13px 14px 16px;overflow:visible}.bottom-nav{position:sticky;bottom:0;display:grid;grid-template-columns:repeat(5,1fr);gap:0;background:#060d1d;border-top:1px solid rgba(255,255,255,.08);padding:7px 6px max(9px,env(safe-area-inset-bottom));z-index:5}.bottom-nav-item{position:relative;border:0;background:transparent;color:#475569;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 4px;border-radius:14px;font-size:10px;font-weight:900;cursor:pointer}.bottom-nav-item .nav-icon{font-size:20px;line-height:1}.bottom-nav-item.active{color:#fbbf24;background:rgba(245,158,11,.055)}.bottom-nav-item i{width:4px;height:4px;border-radius:50%;background:#fbbf24;opacity:0}.bottom-nav-item.active i{opacity:1}.bottom-nav-item em{position:absolute;top:2px;left:50%;margin-left:8px;background:#ef4444;color:#fff;font-size:9px;font-style:normal;border-radius:999px;padding:1px 5px;line-height:1.2}.top-alert,.hint-box,.empty-state{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px;color:#94a3b8;font-size:12px;line-height:1.45}.top-alert{margin-bottom:12px}.top-alert.leader{color:#fff;background:linear-gradient(135deg,rgba(239,68,68,.18),rgba(245,158,11,.09));border-color:rgba(239,68,68,.28)}.top-alert.error{color:#fca5a5;background:rgba(239,68,68,.11);border-color:rgba(239,68,68,.32)}.hint-box.red{color:#fca5a5;background:rgba(239,68,68,.07);border-color:rgba(239,68,68,.18)}.empty-state strong{display:block;color:#cbd5e1;font-size:14px}.empty-state p{margin:4px 0 0}.empty-state.compact{padding:10px}.card-stack{display:grid;gap:9px}.card-stack.slim{gap:6px}.standings-list{display:grid;gap:7px}.standing-row{--accent:#fbbf24;--progress:0%;border-radius:15px;overflow:hidden;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.075)}.standing-row.first{background:linear-gradient(135deg,rgba(245,158,11,.11),rgba(255,255,255,.035));border-color:rgba(245,158,11,.25)}.standing-row.podium{background:rgba(255,255,255,.045)}.standing-main{width:100%;border:0;background:transparent;color:inherit;display:flex;align-items:center;gap:9px;padding:11px 12px 7px;text-align:left;cursor:pointer}.rank-badge{width:28px;text-align:center;font-size:16px;font-weight:950;color:#475569;flex-shrink:0}.person-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0}.standing-name-wrap{min-width:0;flex:1}.standing-name-wrap strong{display:block;color:var(--accent);font-size:15px;line-height:1;font-weight:950}.standing-name-wrap small{display:block;margin-top:3px;color:#475569;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.standing-points{text-align:right;flex-shrink:0}.standing-points small{display:block;color:#475569;font-size:9px;text-transform:uppercase;font-weight:900}.standing-points strong{display:block;color:var(--accent);font-size:26px;line-height:1;font-weight:950;letter-spacing:-1px}.progress-wrap{display:flex;align-items:center;gap:8px;padding:0 12px 9px}.progress-track{height:3px;background:rgba(255,255,255,.07);border-radius:999px;overflow:hidden;flex:1}.progress-track div{height:100%;width:var(--progress);background:var(--accent);border-radius:999px}.progress-wrap span{font-size:10px;color:#64748b;font-weight:800;white-space:nowrap}.standing-details{display:none;padding:0 12px 12px}.standing-row.open .standing-details{display:grid;gap:9px}.stat-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.stat-chip{min-width:0;background:rgba(255,255,255,.048);border:1px solid rgba(255,255,255,.065);border-radius:9px;padding:6px 4px;text-align:center}.stat-chip span{display:block;color:#64748b;font-size:9px;font-weight:950;text-transform:uppercase}.stat-chip strong{display:block;margin-top:2px;font-size:13px;font-weight:950}.team-pill-grid{display:flex;flex-wrap:wrap;gap:6px}.team-pill-grid span{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:999px;padding:6px 8px;color:#cbd5e1;font-size:11px;font-weight:800}.live-movement-row,.impact-row{display:flex;gap:6px;flex-wrap:wrap;padding:0 12px 9px}.info-pill{--pill:#94a3b8;display:inline-flex;align-items:center;gap:4px;border:1px solid color-mix(in srgb,var(--pill) 35%,transparent);background:color-mix(in srgb,var(--pill) 14%,transparent);color:var(--pill);border-radius:999px;padding:5px 8px;font-size:10px;font-weight:950;white-space:nowrap}.info-pill span{color:#94a3b8}.match-card{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);border-radius:14px;padding:12px;outline:none}.match-card.live{background:linear-gradient(135deg,rgba(239,68,68,.11),rgba(255,255,255,.035));border-color:rgba(239,68,68,.25)}.match-card.selected{border-color:rgba(251,191,36,.55);box-shadow:0 0 0 2px rgba(251,191,36,.07)}.match-card.compact{padding:10px}.match-grid{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:9px;align-items:center}.team-block{min-width:0}.team-block strong{display:block;color:#e2e8f0;font-size:13px;line-height:1.25;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.team-block small{display:block;margin-top:2px;font-size:10px;font-weight:900}.score-center{text-align:center;min-width:66px}.status-pill{display:inline-flex;align-items:center;justify-content:center;gap:4px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.055);border-radius:999px;padding:3px 7px;color:#94a3b8;font-size:9px;font-weight:950;text-transform:uppercase;letter-spacing:.35px;margin-bottom:5px}.match-card.live .status-pill{color:#fecaca;background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.25)}.status-pill span{width:6px;height:6px;border-radius:50%;background:#ef4444;animation:pulseDot 1.2s ease-in-out infinite}.score-center strong{display:block;color:#fff;font-size:23px;line-height:1;font-weight:950;letter-spacing:-1px}.score-center small{display:block;margin-top:3px;color:#64748b;font-size:10px;font-weight:850}.score-center em{display:inline-block;margin-top:5px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.22);color:#fbbf24;border-radius:5px;padding:2px 5px;font-size:9px;font-style:normal;font-weight:950}.score-center b{display:block;margin-top:4px;color:#64748b;font-size:9px}.match-card .impact-row{padding:9px 0 0}.match-center-panel{border:1px solid rgba(251,191,36,.18);background:linear-gradient(135deg,rgba(251,191,36,.07),rgba(255,255,255,.025));border-radius:15px;padding:12px}.loading-line{margin:0;color:#fbbf24;font-size:13px;font-weight:850}.error-line{margin:0;color:#fca5a5;font-size:13px;font-weight:850}.source-line{color:#94a3b8;font-size:11px;line-height:1.4;margin-bottom:9px}.match-section h3,.section-block h2{margin:0 0 8px;color:#fbbf24;font-size:13px;letter-spacing:.1px}.section-block{display:grid;gap:7px}.lineup-grid{display:grid;grid-template-columns:1fr;gap:9px}.lineup-card{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);border-radius:14px;padding:11px}.lineup-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:10px}.lineup-head h3{margin:0;color:#fbbf24;font-size:14px}.lineup-head small{display:block;margin-top:2px;color:#94a3b8;font-size:11px}.lineup-head span{align-self:flex-start;border:1px solid rgba(251,191,36,.25);background:rgba(251,191,36,.1);color:#fbbf24;border-radius:999px;padding:4px 7px;font-size:10px;font-weight:950}.player-list{margin-top:10px}.player-list:first-of-type{margin-top:0}.player-list h4{margin:0 0 7px;color:#cbd5e1;font-size:11px;text-transform:uppercase;letter-spacing:.4px}.player-list h4 span{color:#64748b}.player-list p,.soft-text{margin:0;color:#64748b;font-size:12px}.player-list>div{display:grid;gap:6px}.player-row{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;align-items:center;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.035);border-radius:10px;padding:7px 8px}.player-row>span{width:28px;height:28px;display:grid;place-items:center;border-radius:999px;background:rgba(255,255,255,.06);color:#fbbf24;font-size:11px;font-weight:950}.player-row strong{display:block;color:#e2e8f0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.player-row small{display:block;color:#64748b;font-size:10px}.event-list{display:grid;gap:6px}.event-row{display:grid;grid-template-columns:38px minmax(0,1fr);gap:8px;align-items:center;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.035);border-radius:11px;padding:7px 9px}.event-row>strong{color:#fbbf24;font-size:12px}.event-row b{display:block;color:#e2e8f0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.event-row small{display:block;margin-top:1px;color:#94a3b8;font-size:10px}.chart-card,.cards-ranking,.my-card,.what-card{background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.075);border-radius:15px;padding:12px}.chart-title{color:#64748b;font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.45px;margin-bottom:8px}.chart-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:7px}.chart-legend span{display:inline-flex;align-items:center;gap:5px;color:#94a3b8;font-size:11px;font-weight:850}.chart-legend i{width:16px;height:3px;border-radius:2px}.cards-ranking{display:grid;gap:2px}.card-ranking-row{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}.card-ranking-row:last-child{border-bottom:0}.card-ranking-row>span{width:22px;text-align:center;color:#475569;font-size:12px;font-weight:950}.card-ranking-row strong{flex:1;font-size:13px}.card-ranking-row div{display:flex;gap:5px}.card-ranking-row em,.card-ranking-row b{border-radius:7px;padding:3px 7px;font-size:11px;font-style:normal}.card-ranking-row em{background:rgba(250,204,21,.1);border:1px solid rgba(250,204,21,.24);color:#fde047}.card-ranking-row b{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.24);color:#fca5a5}.person-selector{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.person-selector button{--accent:#fbbf24;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.04);color:#64748b;border-radius:999px;padding:7px 5px;font-size:11px;font-weight:900;cursor:pointer}.person-selector button.active{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 38%,transparent);background:color-mix(in srgb,var(--accent) 12%,transparent)}.my-card{--accent:#fbbf24;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 12%,transparent),rgba(255,255,255,.035));border-color:color-mix(in srgb,var(--accent) 25%,transparent)}.my-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}.my-head h2{margin:0;color:var(--accent);font-size:20px}.my-head p{margin:3px 0 0;color:#64748b;font-size:11px;font-weight:800}.my-head div:last-child{text-align:right}.my-head small{display:block;color:#64748b;font-size:9px;font-weight:900;text-transform:uppercase}.my-head strong{display:block;color:var(--accent);font-size:31px;line-height:1;font-weight:950;letter-spacing:-1px}.what-card h3{margin:0 0 8px;color:#7dd3fc;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.what-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0;font-size:11px}.what-row span{color:#94a3b8}.what-row strong{text-align:right}.what-row strong.ok{color:#34d399}.what-row strong.warn{color:#fbbf24}.what-row strong.no{color:#f87171}@media (min-width:760px){.phone-frame{width:min(100%,760px)}.lineup-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.content{padding:16px}.person-selector{grid-template-columns:repeat(8,minmax(0,1fr))}}@media (max-width:370px){.app-shell{padding:0}.phone-frame{min-height:100vh;border-radius:0;border:0}.stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.person-selector{grid-template-columns:repeat(2,minmax(0,1fr))}.bottom-nav-item span:last-of-type{font-size:9px}.app-header h1{font-size:22px}}.h2h-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}.h2h-header{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:800}.h2h-vs{color:#64748b;font-size:14px;font-weight:400}.h2h-main-stats{display:flex;flex-direction:column;gap:4px}.h2h-main-stats strong{color:#fbbf24;font-size:15px}.h2h-win-row{display:flex;justify-content:space-between;font-size:13px;color:#94a3b8}.h2h-draws{font-size:12px;color:#64748b}.h2h-goals-section h4{margin:0;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.5px}.h2h-goals-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;font-weight:600}.h2h-divider{color:#64748b}.h2h-last-match{margin-top:4px;border-top:1px solid rgba(255,255,255,.05);padding-top:10px}.h2h-last-match small{color:#64748b;font-size:11px;font-weight:700;display:block;margin-bottom:6px}.h2h-last-match-box{display:flex;align-items:center;justify-content:space-between;gap:6px;background:rgba(0,0,0,.2);padding:8px 12px;border-radius:10px;font-size:12px}.h2h-result{color:#fbbf24;font-size:14px;min-width:30px;text-align:center}.team-truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.match-group-label{font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:#475569;margin-bottom:7px;text-align:center}.rank-delta{font-size:9px;font-weight:900;flex-shrink:0;width:18px;text-align:center;line-height:1}.mc-tabs{display:flex;gap:6px;margin-bottom:10px}.mc-tabs button{flex:1;border:1px solid rgba(255,255,255,.08);background:transparent;color:#64748b;border-radius:9px;padding:7px 8px;font-size:11px;font-weight:900;cursor:pointer}.mc-tabs button.active{color:#fbbf24;border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.08)}
+*{box-sizing:border-box}body{margin:0;background:#05091a}.app-shell{min-height:100vh;background:radial-gradient(circle at top,#101b32 0,#05091a 45%,#040713 100%);color:#e2e8f0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:12px}.phone-frame{width:min(100%,430px);min-height:calc(100vh - 24px);margin:0 auto;background:#060d1d;border:1px solid rgba(255,255,255,.09);border-radius:28px;overflow:hidden;box-shadow:0 22px 70px rgba(0,0,0,.35);display:flex;flex-direction:column}.app-header{padding:18px 16px 12px;background:linear-gradient(180deg,#071126 0,#060d1d 100%);border-bottom:1px solid rgba(255,255,255,.055)}.header-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.app-header h1{margin:0;color:#fbbf24;font-size:24px;letter-spacing:-.7px;line-height:1.05}.app-header p{margin:6px 0 0;color:#64748b;font-size:12px;font-weight:700;line-height:1.35}.refresh-btn{width:38px;height:38px;border-radius:14px;border:1px solid rgba(245,158,11,.26);background:rgba(245,158,11,.1);color:#fbbf24;font-size:18px;font-weight:900;cursor:pointer;flex-shrink:0}.refresh-btn:disabled{opacity:.7;cursor:default}.header-meta-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}.header-meta-row>span{color:#94a3b8;font-size:11px;font-weight:700}.countdown-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,.11);border:1px solid rgba(245,158,11,.24);border-radius:999px;padding:5px 10px;color:#94a3b8;font-size:10px;font-weight:800}.countdown-pill strong{color:#fbbf24;font-size:12px;font-variant-numeric:tabular-nums}.countdown-dot{width:6px;height:6px;border-radius:50%;background:#fbbf24;animation:pulseDot 1.7s ease-in-out infinite}@keyframes pulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.78)}}.sub-tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.06);background:#060d1d}.sub-tabs button{flex:1;border:0;border-bottom:2px solid transparent;background:transparent;color:#64748b;padding:10px 8px;font-size:12px;font-weight:900;cursor:pointer;text-align:center}.sub-tabs button.active{color:#fbbf24;border-bottom-color:#fbbf24;background:rgba(245,158,11,.045)}.sub-tabs span{background:#ef4444;color:#fff;border-radius:999px;padding:1px 5px;font-size:9px;margin-left:4px}.content{flex:1;padding:13px 14px 16px;overflow:visible}.bottom-nav{position:sticky;bottom:0;display:grid;grid-template-columns:repeat(5,1fr);gap:0;background:#060d1d;border-top:1px solid rgba(255,255,255,.08);padding:7px 6px max(9px,env(safe-area-inset-bottom));z-index:5}.bottom-nav-item{position:relative;border:0;background:transparent;color:#475569;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 4px;border-radius:14px;font-size:10px;font-weight:900;cursor:pointer}.bottom-nav-item .nav-icon{font-size:20px;line-height:1}.bottom-nav-item.active{color:#fbbf24;background:rgba(245,158,11,.055)}.bottom-nav-item i{width:4px;height:4px;border-radius:50%;background:#fbbf24;opacity:0}.bottom-nav-item.active i{opacity:1}.bottom-nav-item em{position:absolute;top:2px;left:50%;margin-left:8px;background:#ef4444;color:#fff;font-size:9px;font-style:normal;border-radius:999px;padding:1px 5px;line-height:1.2}.top-alert,.hint-box,.empty-state{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px;color:#94a3b8;font-size:12px;line-height:1.45}.top-alert{margin-bottom:12px}.top-alert.leader{color:#fff;background:linear-gradient(135deg,rgba(239,68,68,.18),rgba(245,158,11,.09));border-color:rgba(239,68,68,.28)}.top-alert.error{color:#fca5a5;background:rgba(239,68,68,.11);border-color:rgba(239,68,68,.32)}.hint-box.red{color:#fca5a5;background:rgba(239,68,68,.07);border-color:rgba(239,68,68,.18)}.empty-state strong{display:block;color:#cbd5e1;font-size:14px}.empty-state p{margin:4px 0 0}.empty-state.compact{padding:10px}.card-stack{display:grid;gap:9px}.card-stack.slim{gap:6px}.standings-list{display:grid;gap:7px}.standing-row{--accent:#fbbf24;--progress:0%;border-radius:15px;overflow:hidden;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.075)}.standing-row.first{background:linear-gradient(135deg,rgba(245,158,11,.11),rgba(255,255,255,.035));border-color:rgba(245,158,11,.25)}.standing-row.podium{background:rgba(255,255,255,.045)}.standing-main{width:100%;border:0;background:transparent;color:inherit;display:flex;align-items:center;gap:9px;padding:11px 12px 7px;text-align:left;cursor:pointer}.rank-badge{width:28px;text-align:center;font-size:16px;font-weight:950;color:#475569;flex-shrink:0}.person-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0}.standing-name-wrap{min-width:0;flex:1}.standing-name-wrap strong{display:block;color:var(--accent);font-size:15px;line-height:1;font-weight:950}.standing-name-wrap small{display:block;margin-top:3px;color:#475569;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.standing-points{text-align:right;flex-shrink:0}.standing-points small{display:block;color:#475569;font-size:9px;text-transform:uppercase;font-weight:900}.standing-points strong{display:block;color:var(--accent);font-size:26px;line-height:1;font-weight:950;letter-spacing:-1px}.progress-wrap{display:flex;align-items:center;gap:8px;padding:0 12px 9px}.progress-track{height:3px;background:rgba(255,255,255,.07);border-radius:999px;overflow:hidden;flex:1}.progress-track div{height:100%;width:var(--progress);background:var(--accent);border-radius:999px}.progress-wrap span{font-size:10px;color:#64748b;font-weight:800;white-space:nowrap}.standing-details{display:none;padding:0 12px 12px}.standing-row.open .standing-details{display:grid;gap:9px}.stat-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.stat-chip{min-width:0;background:rgba(255,255,255,.048);border:1px solid rgba(255,255,255,.065);border-radius:9px;padding:6px 4px;text-align:center}.stat-chip span{display:block;color:#64748b;font-size:9px;font-weight:950;text-transform:uppercase}.stat-chip strong{display:block;margin-top:2px;font-size:13px;font-weight:950}.team-pill-grid{display:flex;flex-wrap:wrap;gap:6px}.team-pill-grid span{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:999px;padding:6px 8px;color:#cbd5e1;font-size:11px;font-weight:800}.live-movement-row,.impact-row{display:flex;gap:6px;flex-wrap:wrap;padding:0 12px 9px}.info-pill{--pill:#94a3b8;display:inline-flex;align-items:center;gap:4px;border:1px solid color-mix(in srgb,var(--pill) 35%,transparent);background:color-mix(in srgb,var(--pill) 14%,transparent);color:var(--pill);border-radius:999px;padding:5px 8px;font-size:10px;font-weight:950;white-space:nowrap}.info-pill span{color:#94a3b8}.match-card{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);border-radius:14px;padding:12px;outline:none}.match-card.live{background:linear-gradient(135deg,rgba(239,68,68,.11),rgba(255,255,255,.035));border-color:rgba(239,68,68,.25)}.match-card.selected{border-color:rgba(251,191,36,.55);box-shadow:0 0 0 2px rgba(251,191,36,.07)}.match-card.compact{padding:10px}.match-grid{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:9px;align-items:center}.team-block{min-width:0}.team-block strong{display:block;color:#e2e8f0;font-size:13px;line-height:1.25;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.team-block small{display:block;margin-top:2px;font-size:10px;font-weight:900}.score-center{text-align:center;min-width:66px}.status-pill{display:inline-flex;align-items:center;justify-content:center;gap:4px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.055);border-radius:999px;padding:3px 7px;color:#94a3b8;font-size:9px;font-weight:950;text-transform:uppercase;letter-spacing:.35px;margin-bottom:5px}.match-card.live .status-pill{color:#fecaca;background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.25)}.status-pill span{width:6px;height:6px;border-radius:50%;background:#ef4444;animation:pulseDot 1.2s ease-in-out infinite}.score-center strong{display:block;color:#fff;font-size:23px;line-height:1;font-weight:950;letter-spacing:-1px}.score-center small{display:block;margin-top:3px;color:#64748b;font-size:10px;font-weight:850}.score-center em{display:inline-block;margin-top:5px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.22);color:#fbbf24;border-radius:5px;padding:2px 5px;font-size:9px;font-style:normal;font-weight:950}.score-center b{display:block;margin-top:4px;color:#64748b;font-size:9px}.match-card .impact-row{padding:9px 0 0}.match-center-panel{border:1px solid rgba(251,191,36,.18);background:linear-gradient(135deg,rgba(251,191,36,.07),rgba(255,255,255,.025));border-radius:15px;padding:12px}.loading-line{margin:0;color:#fbbf24;font-size:13px;font-weight:850}.error-line{margin:0;color:#fca5a5;font-size:13px;font-weight:850}.source-line{color:#94a3b8;font-size:11px;line-height:1.4;margin-bottom:9px}.match-section h3,.section-block h2{margin:0 0 8px;color:#fbbf24;font-size:13px;letter-spacing:.1px}.section-block{display:grid;gap:7px}.lineup-grid{display:grid;grid-template-columns:1fr;gap:9px}.lineup-card{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);border-radius:14px;padding:11px}.lineup-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:10px}.lineup-head h3{margin:0;color:#fbbf24;font-size:14px}.lineup-head small{display:block;margin-top:2px;color:#94a3b8;font-size:11px}.lineup-head span{align-self:flex-start;border:1px solid rgba(251,191,36,.25);background:rgba(251,191,36,.1);color:#fbbf24;border-radius:999px;padding:4px 7px;font-size:10px;font-weight:950}.player-list{margin-top:10px}.player-list:first-of-type{margin-top:0}.player-list h4{margin:0 0 7px;color:#cbd5e1;font-size:11px;text-transform:uppercase;letter-spacing:.4px}.player-list h4 span{color:#64748b}.player-list p,.soft-text{margin:0;color:#64748b;font-size:12px}.player-list>div{display:grid;gap:6px}.player-row{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;align-items:center;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.035);border-radius:10px;padding:7px 8px}.player-row>span{width:28px;height:28px;display:grid;place-items:center;border-radius:999px;background:rgba(255,255,255,.06);color:#fbbf24;font-size:11px;font-weight:950}.player-row strong{display:block;color:#e2e8f0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.player-row small{display:block;color:#64748b;font-size:10px}.event-list{display:grid;gap:6px}.event-row{display:grid;grid-template-columns:38px minmax(0,1fr);gap:8px;align-items:center;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.035);border-radius:11px;padding:7px 9px}.event-row>strong{color:#fbbf24;font-size:12px}.event-row b{display:block;color:#e2e8f0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.event-row small{display:block;margin-top:1px;color:#94a3b8;font-size:10px}.chart-card,.cards-ranking,.my-card,.what-card{background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.075);border-radius:15px;padding:12px}.chart-title{color:#64748b;font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.45px;margin-bottom:8px}.chart-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:7px}.chart-legend span{display:inline-flex;align-items:center;gap:5px;color:#94a3b8;font-size:11px;font-weight:850}.chart-legend i{width:16px;height:3px;border-radius:2px}.cards-ranking{display:grid;gap:2px}.card-ranking-row{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}.card-ranking-row:last-child{border-bottom:0}.card-ranking-row>span{width:22px;text-align:center;color:#475569;font-size:12px;font-weight:950}.card-ranking-row strong{flex:1;font-size:13px}.card-ranking-row div{display:flex;gap:5px}.card-ranking-row em,.card-ranking-row b{border-radius:7px;padding:3px 7px;font-size:11px;font-style:normal}.card-ranking-row em{background:rgba(250,204,21,.1);border:1px solid rgba(250,204,21,.24);color:#fde047}.card-ranking-row b{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.24);color:#fca5a5}.person-selector{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.person-selector button{--accent:#fbbf24;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.04);color:#64748b;border-radius:999px;padding:7px 5px;font-size:11px;font-weight:900;cursor:pointer}.person-selector button.active{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 38%,transparent);background:color-mix(in srgb,var(--accent) 12%,transparent)}.my-card{--accent:#fbbf24;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 12%,transparent),rgba(255,255,255,.035));border-color:color-mix(in srgb,var(--accent) 25%,transparent)}.my-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}.my-head h2{margin:0;color:var(--accent);font-size:20px}.my-head p{margin:3px 0 0;color:#64748b;font-size:11px;font-weight:800}.my-head div:last-child{text-align:right}.my-head small{display:block;color:#64748b;font-size:9px;font-weight:900;text-transform:uppercase}.my-head strong{display:block;color:var(--accent);font-size:31px;line-height:1;font-weight:950;letter-spacing:-1px}.what-card h3{margin:0 0 8px;color:#7dd3fc;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.what-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0;font-size:11px}.what-row span{color:#94a3b8}.what-row strong{text-align:right}.what-row strong.ok{color:#34d399}.what-row strong.warn{color:#fbbf24}.what-row strong.no{color:#f87171}@media (min-width:760px){.phone-frame{width:min(100%,760px)}.lineup-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.content{padding:16px}.person-selector{grid-template-columns:repeat(8,minmax(0,1fr))}}@media (max-width:370px){.app-shell{padding:0}.phone-frame{min-height:100vh;border-radius:0;border:0}.stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.person-selector{grid-template-columns:repeat(2,minmax(0,1fr))}.bottom-nav-item span:last-of-type{font-size:9px}.app-header h1{font-size:22px}}.h2h-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}.h2h-header{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:800}.h2h-vs{color:#64748b;font-size:14px;font-weight:400}.h2h-main-stats{display:flex;flex-direction:column;gap:4px}.h2h-main-stats strong{color:#fbbf24;font-size:15px}.h2h-win-row{display:flex;justify-content:space-between;font-size:13px;color:#94a3b8}.h2h-draws{font-size:12px;color:#64748b}.h2h-goals-section h4{margin:0;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.5px}.h2h-goals-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;font-weight:600}.h2h-divider{color:#64748b}.h2h-last-match{margin-top:4px;border-top:1px solid rgba(255,255,255,.05);padding-top:10px}.h2h-last-match small{color:#64748b;font-size:11px;font-weight:700;display:block;margin-bottom:6px}.h2h-last-match-box{display:flex;align-items:center;justify-content:space-between;gap:6px;background:rgba(0,0,0,.2);padding:8px 12px;border-radius:10px;font-size:12px}.h2h-result{color:#fbbf24;font-size:14px;min-width:30px;text-align:center}.team-truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.match-group-label{font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:#475569;margin-bottom:7px;text-align:center}.rank-delta{font-size:9px;font-weight:900;flex-shrink:0;width:18px;text-align:center;line-height:1}.mc-tabs{display:flex;gap:6px;margin-bottom:10px}.mc-tabs button{flex:1;border:1px solid rgba(255,255,255,.08);background:transparent;color:#64748b;border-radius:9px;padding:7px 8px;font-size:11px;font-weight:900;cursor:pointer}.mc-tabs button.active{color:#fbbf24;border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.08)}.group-section{display:grid;gap:10px}.group-header{display:flex;align-items:center;gap:10px;margin:4px 0}.group-header h2{margin:0;color:#fbbf24;font-size:16px;font-weight:900}.group-header-line{flex:1;height:1px;background:rgba(255,255,255,.08)}.group-table{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden}.group-table-head{display:grid;grid-template-columns:minmax(0,1fr) repeat(5,28px) 32px;gap:4px;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.07)}.group-table-head span{color:#475569;font-size:9px;font-weight:900;text-align:center;text-transform:uppercase}.group-table-head span:first-child{text-align:left}.group-table-row{display:grid;grid-template-columns:minmax(0,1fr) repeat(5,28px) 32px;gap:4px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.05)}.group-table-row:last-child{border-bottom:0}.group-table-row.leader{background:rgba(251,191,36,.04)}.group-table-row span{color:#94a3b8;font-size:11px;font-weight:800;text-align:center;display:flex;align-items:center;justify-content:center}.group-table-row span:first-child{text-align:left;justify-content:flex-start;gap:4px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.group-table-row .pts{color:#fbbf24;font-weight:950;font-size:13px}.group-owner{font-size:9px;font-weight:900}.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:100;display:flex;align-items:flex-end;justify-content:center;padding:0}.modal-panel{width:min(100%,430px);max-height:85vh;background:#060d1d;border:1px solid rgba(255,255,255,.12);border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden}.modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 16px 14px;border-bottom:1px solid rgba(255,255,255,.07)}.modal-header h2{margin:0;color:#e2e8f0;font-size:20px;font-weight:900;line-height:1.15}.modal-header small{display:block;margin-top:3px;font-size:12px;font-weight:800}.modal-close{width:34px;height:34px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:#94a3b8;font-size:16px;cursor:pointer;flex-shrink:0;display:grid;place-items:center}.modal-body{flex:1;overflow-y:auto;padding:14px 14px 24px;display:grid;gap:12px}.modal-matches-title{color:#64748b;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px}@media(min-width:760px){.modal-panel{align-self:center;border-radius:20px;max-height:80vh}}
 `;
 
 const ANALYSIS_STYLES = `
-.analysis-card{display:grid;gap:10px}.analysis-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.analysis-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.analysis-head p{margin:4px 0 0;color:#cbd5e1;font-size:12px;line-height:1.4}.analysis-badge{display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 9px;border-radius:999px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.1);color:#fbbf24;font-size:10px;font-weight:950;white-space:nowrap}.analysis-pills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.analysis-list{display:grid;gap:8px}.analysis-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}.analysis-row:first-child{padding-top:0;border-top:0}.analysis-row span{min-width:0;color:#94a3b8;font-size:11px;font-weight:800}.analysis-row strong{min-width:0;text-align:right;color:#e2e8f0;font-size:11px;font-weight:900;line-height:1.35}.analysis-row strong.ok{color:#34d399}.analysis-row strong.warn{color:#fbbf24}.analysis-chip-row{display:flex;flex-wrap:wrap;gap:6px}.analysis-chip{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:999px;padding:5px 7px;color:#e2e8f0;font-size:10px;font-weight:800;white-space:nowrap}.analysis-chip.good{border-color:rgba(52,211,153,.24);background:rgba(52,211,153,.08);color:#86efac}.analysis-chip.muted{color:#94a3b8}.form-list{display:grid;gap:8px}.form-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.form-row:first-of-type{padding-top:0;border-top:0}.form-name{min-width:0}.form-name strong{display:block;color:#e2e8f0;font-size:12px;font-weight:900;line-height:1.2}.form-name small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.form-results{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}.form-result{min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11px;line-height:1}.form-result.win{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}.form-result.loss{border-color:rgba(248,113,113,.28);background:rgba(248,113,113,.08)}.form-result.draw{border-color:rgba(251,191,36,.22);background:rgba(251,191,36,.08)}.form-result.muted{color:#64748b;padding:0 6px;min-width:auto}.form-empty{margin:0;color:#94a3b8;font-size:12px;line-height:1.4}.stats-card{display:grid;gap:10px}.stats-list{display:grid;gap:7px}.stats-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.stats-row:first-of-type{padding-top:0;border-top:0}.stats-row-main{display:flex;align-items:center;gap:8px;min-width:0}.stats-rank{width:26px;text-align:center;font-size:12px;font-weight:950;color:#475569;flex-shrink:0}.stats-name{min-width:0}.stats-name strong{display:block;font-size:12px;font-weight:900;line-height:1.2}.stats-name small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.stats-points{text-align:right;flex-shrink:0}.stats-points strong{display:block;color:#fbbf24;font-size:18px;line-height:1;font-weight:950}.stats-points small{display:block;margin-top:2px;color:#64748b;font-size:9px;font-weight:900;text-transform:uppercase}.stats-form-grid{display:grid;gap:7px}.stats-form-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.stats-form-row:first-of-type{padding-top:0;border-top:0}.stats-form-head{min-width:0}.stats-form-head strong{display:block;font-size:12px;font-weight:900;line-height:1.2}.stats-form-head small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.h2h-selector-wrap{display:grid;gap:9px}.h2h-selector-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.h2h-selector-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.h2h-selector-head p{margin:4px 0 0;color:#94a3b8;font-size:12px;line-height:1.35}.h2h-selector{grid-template-columns:repeat(4,minmax(0,1fr))}@media (min-width:760px){.analysis-pills{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.analysis-card{display:grid;gap:10px}.analysis-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.analysis-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.analysis-head p{margin:4px 0 0;color:#cbd5e1;font-size:12px;line-height:1.4}.analysis-badge{display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 9px;border-radius:999px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.1);color:#fbbf24;font-size:10px;font-weight:950;white-space:nowrap}.analysis-pills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.analysis-list{display:grid;gap:8px}.analysis-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}.analysis-row:first-child{padding-top:0;border-top:0}.analysis-row span{min-width:0;color:#94a3b8;font-size:11px;font-weight:800}.analysis-row strong{min-width:0;text-align:right;color:#e2e8f0;font-size:11px;font-weight:900;line-height:1.35}.analysis-row strong.ok{color:#34d399}.analysis-row strong.warn{color:#fbbf24}.analysis-chip-row{display:flex;flex-wrap:wrap;gap:6px}.analysis-chip{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:999px;padding:5px 7px;color:#e2e8f0;font-size:10px;font-weight:800;white-space:nowrap}.analysis-chip.good{border-color:rgba(52,211,153,.24);background:rgba(52,211,153,.08);color:#86efac}.analysis-chip.muted{color:#94a3b8}.form-list{display:grid;gap:8px}.form-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.form-row:first-of-type{padding-top:0;border-top:0}.form-name{min-width:0}.form-name strong{display:block;color:#e2e8f0;font-size:12px;font-weight:900;line-height:1.2}.form-name small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.form-results{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}.form-result{min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11px;line-height:1}.form-result.win{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}.form-result.loss{border-color:rgba(248,113,113,.28);background:rgba(248,113,113,.08)}.form-result.draw{border-color:rgba(251,191,36,.22);background:rgba(251,191,36,.08)}.form-result.muted{color:#64748b;padding:0 6px;min-width:auto}.form-empty{margin:0;color:#94a3b8;font-size:12px;line-height:1.4}.stats-card{display:grid;gap:10px}.stats-list{display:grid;gap:7px}.stats-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.stats-row:first-of-type{padding-top:0;border-top:0}.stats-row-main{display:flex;align-items:center;gap:8px;min-width:0}.stats-rank{width:26px;text-align:center;font-size:12px;font-weight:950;color:#475569;flex-shrink:0}.stats-name{min-width:0}.stats-name strong{display:block;font-size:12px;font-weight:900;line-height:1.2}.stats-name small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.stats-points{text-align:right;flex-shrink:0}.stats-points strong{display:block;color:#fbbf24;font-size:18px;line-height:1;font-weight:950}.stats-points small{display:block;margin-top:2px;color:#64748b;font-size:9px;font-weight:900;text-transform:uppercase}.stats-form-grid{display:grid;gap:7px}.stats-form-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}.stats-form-row:first-of-type{padding-top:0;border-top:0}.stats-form-head{min-width:0}.stats-form-head strong{display:block;font-size:12px;font-weight:900;line-height:1.2}.stats-form-head small{display:block;margin-top:2px;color:#64748b;font-size:10px;font-weight:800}.h2h-selector-wrap{display:grid;gap:9px}.h2h-selector-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.h2h-selector-head h3{margin:0;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.4px}.h2h-selector-head p{margin:4px 0 0;color:#94a3b8;font-size:12px;line-height:1.35}.h2h-selector{grid-template-columns:repeat(4,minmax(0,1fr))}@media (min-width:760px){.analysis-pills{grid-template-columns:repeat(4,minmax(0,1fr))}}.timeline-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.timeline-legend span{font-size:11px;font-weight:800;color:#94a3b8}.timeline-svg{width:100%;overflow:visible}
 `;
 
 export default function App() {
@@ -882,6 +1114,7 @@ export default function App() {
   const [matchCenterErrors, setMatchCenterErrors] = useState({});
   const [cachedMatchCenters, setCachedMatchCenters] = useState({});
   const [prevRankSnapshot] = useState(() => loadRankSnapshot());
+  const [selectedTeam, setSelectedTeam] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -986,15 +1219,15 @@ export default function App() {
 
   let screen = null;
   if (tab === "liga") {
-    screen = <StandingsPanel standings={standings} openPerson={openPerson} setOpenPerson={setOpenPerson} prevRankSnapshot={prevRankSnapshot} />;
+    screen = <StandingsPanel standings={standings} openPerson={openPerson} setOpenPerson={setOpenPerson} prevRankSnapshot={prevRankSnapshot} onTeamClick={setSelectedTeam} />;
   } else if (tab === "live") {
     screen = activeSubTab === "prognose"
       ? <ProjectionPanel live={live} liveProjectionStandings={liveProjectionStandings} officialRanks={officialRanks} openPerson={openPerson} setOpenPerson={setOpenPerson} />
       : <LivePanel live={live} expandedMatchId={expandedMatchId} openMatchCenter={openMatchCenter} matchCenters={matchCenters} matchCenterLoading={matchCenterLoading} matchCenterErrors={matchCenterErrors} cachedMatchCenters={cachedMatchCenters} />;
   } else if (tab === "spiele") {
-    screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} />;
+    screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} upcoming={upcoming} />;
   } else if (tab === "stats") {
-    screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} />;
+    screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} played={played} />;
   } else if (tab === "mein") {
     screen = <MyPanel selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} standings={standings} liveProjectionStandings={liveProjectionStandings} live={live} upcoming={upcoming} played={played} />;
   }
@@ -1011,6 +1244,7 @@ export default function App() {
         {screen}
       </div>
       <BottomNav active={tab} onChange={setTab} liveCount={live.length} />
+      {selectedTeam && <TeamModal team={selectedTeam} onClose={() => setSelectedTeam(null)} played={played} live={live} upcoming={upcoming} />}
     </section>
   </main>;
 }
