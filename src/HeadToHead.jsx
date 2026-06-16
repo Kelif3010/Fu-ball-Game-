@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { COLORS, displayTeamName } from "./App";
+import { COLORS, displayTeamName } from "./shared";
 
 function buildSelectedStats(stats, selectedPerson) {
   return (Array.isArray(stats) ? stats : [])
