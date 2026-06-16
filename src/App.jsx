@@ -705,7 +705,7 @@ export default function App() {
         {error && <div className="top-alert error">❌ {error}</div>}
         {screen}
       </div>
-      <BottomNav active={tab} onChange={handleTabChange} liveCount={live.length} compact={navCompact} />
+      {!selectedTeam && <BottomNav active={tab} onChange={handleTabChange} liveCount={live.length} compact={navCompact} />}
       {selectedTeam && <TeamModal team={selectedTeam} onClose={() => setSelectedTeam(null)} played={played} live={live} upcoming={upcoming} />}
     </section>
   </main>;
