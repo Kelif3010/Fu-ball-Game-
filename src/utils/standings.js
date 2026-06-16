@@ -264,7 +264,7 @@ export function buildMyAnalysis(person, standings, liveProjectionStandings, live
 
   const currentThreats = futureThreats
     .filter(item => item.person !== person && item.rank > (standingsByPerson[person]?.rank || 0))
-    .filter(item => item.futurePoints > maxPossiblePoints || (item.futurePoints === maxPossiblePoints && beatsOnTieBreak(item, row)))
+    .filter(item => item.pts + 3 > row.pts || (item.pts + 3 === row.pts && beatsOnTieBreak(item, row)))
     .map(item => ({
       ...item,
       ...buildCatchupRequirement(item, row),
@@ -276,14 +276,14 @@ export function buildMyAnalysis(person, standings, liveProjectionStandings, live
     }));
 
   const reachable = standings
-    .filter(item => item.person !== person && item.rank < (standingsByPerson[person]?.rank || 999))
+    .filter(item => item.person !== person && (standingsByPerson[item.person]?.rank || 999) < (standingsByPerson[person]?.rank || 999))
     .map(item => ({
       ...item,
       rank: standingsByPerson[item.person]?.rank || 999,
       open: openMatchMap[item.person]?.length || 0,
       ...buildCatchupRequirement(row, item),
     }))
-    .filter(item => maxPossiblePoints > item.pts || (maxPossiblePoints === item.pts && beatsOnTieBreak(row, item)))
+    .filter(item => row.pts + 3 > item.pts || (row.pts + 3 === item.pts && beatsOnTieBreak(row, item)))
     .sort((a, b) => a.pointsToTie - b.pointsToTie || a.tdNeededAtTie - b.tdNeededAtTie || a.rank - b.rank)
     .slice(0, 1);
 
