@@ -459,7 +459,7 @@ function StatsFormCard({ rows }) {
             <small>{row.results.length ? `${row.results.length} Spiele` : "Keine Spiele"}</small>
           </div>
           <div className="form-results">
-            {row.results.length > 0 ? row.results.map(({ emoji, match }, index) => <span key={`${row.person}-${match.id || index}-${index}`} className={`form-result ${emoji === "✅" ? "win" : emoji === "❌" ? "loss" : "draw"}`} title={`${displayTeamName(match.homeTeam)} vs ${displayTeamName(match.awayTeam)}`}>{emoji}</span>) : <span className="form-result muted">-</span>}
+            {row.results.length > 0 ? [...row.results].reverse().map(({ emoji, match }, index) => <span key={`${row.person}-${match.id || index}-${index}`} className={`form-result ${emoji === "✅" ? "win" : emoji === "❌" ? "loss" : "draw"}`} title={`${displayTeamName(match.homeTeam)} vs ${displayTeamName(match.awayTeam)}`}>{emoji}</span>) : <span className="form-result muted">-</span>}
           </div>
         </div>
       ))}
