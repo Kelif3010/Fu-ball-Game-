@@ -515,12 +515,13 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
                 <strong>Platz {selectedRank + 1} ist sicher</strong>
                 <p>Niemand kann dich mit seinen restlichen Spielen mehr überholen.</p>
               </div>
+              <span className="scenario-badge">Sicher</span>
             </article>
-          : canOvertakeList.slice(0, 2).map(threat => (
+          : canOvertakeList.slice(0, 1).map(threat => (
               <article key={threat.person} className="scenario-card threat">
                 <span className="scenario-icon">⚠️</span>
                 <div className="scenario-content">
-                  <strong style={{ color: COLORS[threat.person] }}>{threat.person} kann vorbeiziehen</strong>
+                  <strong style={{ color: COLORS[threat.person] }}>{threat.person} kann dich noch einholen</strong>
                   <p>{formatNeedLine(threat.pointsNeeded, threat.tdNeededAtTie)}</p>
                 </div>
                 <span className="scenario-badge threat">Gefahr</span>
@@ -534,12 +535,13 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
                 <strong>Niemand in Reichweite</strong>
                 <p>Alle Teilnehmer vor dir liegen außer Reichweite.</p>
               </div>
+              <span className="scenario-badge target">Ziel</span>
             </article>
-          : reachableList.slice(0, 2).map(target => (
+          : reachableList.slice(0, 1).map(target => (
               <article key={target.person} className="scenario-card target">
                 <span className="scenario-icon">🎯</span>
                 <div className="scenario-content">
-                  <strong style={{ color: COLORS[target.person] }}>{target.person} ist erreichbar</strong>
+                  <strong style={{ color: COLORS[target.person] }}>{target.person} ist dein nächstes Ziel</strong>
                   <p>{formatNeedLine(target.pointsNeeded, target.tdNeededAtTie)}</p>
                 </div>
                 <span className="scenario-badge target">Erreichbar</span>
@@ -564,9 +566,12 @@ function EmptyState({ title, text, compact = false }) {
 
 function formatNeedLine(pointsNeeded, tdNeededAtTie) {
   const pointsText = pointsNeeded === 1 ? "1 Punkt" : `${pointsNeeded} Punkte`;
-  if (tdNeededAtTie <= 0) return `${pointsText} reichen bei Punktgleichheit.`;
-  const tdText = tdNeededAtTie === 1 ? "1 Tor Unterschied" : `${tdNeededAtTie} Tore Unterschied`;
-  return `${pointsText} und bei Punktgleichheit +${tdNeededAtTie} TD (${tdText}).`;
+  if (pointsNeeded === 0) {
+    if (tdNeededAtTie <= 0) return "Punktgleichheit reicht, dann entscheidet die Tordifferenz.";
+    return `Punktgleichheit reicht noch nicht: +${tdNeededAtTie} TD nötig.`;
+  }
+  if (tdNeededAtTie <= 0) return `${pointsText} reichen, wenn die Tordifferenz gleich bleibt.`;
+  return `${pointsText} und bei Punktgleichheit +${tdNeededAtTie} TD nötig.`;
 }
 
 function TeamModal({ team, onClose, played, live, upcoming }) {
