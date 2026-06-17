@@ -2065,3 +2065,125 @@ body {
   font-size: 10px;
   font-weight: 700;
 }
+
+/* ── Gruppendritte ─────────────────────────────── */
+.thirds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.thirds-section-label {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 10px 0 6px;
+  color: #64748b;
+}
+
+.thirds-section-label.advancing { color: #34d399; }
+.thirds-section-label.eliminated { color: #f87171; margin-top: 4px; }
+
+.thirds-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  margin-bottom: 3px;
+}
+
+.thirds-row.advancing {
+  background: rgba(52, 211, 153, 0.06);
+}
+
+.thirds-row.eliminated {
+  background: rgba(248, 113, 113, 0.05);
+  opacity: 0.75;
+}
+
+.thirds-rank {
+  width: 22px;
+  font-size: 11px;
+  font-weight: 900;
+  color: #475569;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.thirds-team {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+}
+
+.thirds-flag {
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.thirds-info {
+  min-width: 0;
+}
+
+.thirds-info strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thirds-info small {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+.thirds-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.thirds-pts {
+  font-size: 12px;
+  font-weight: 900;
+  color: #e2e8f0;
+  min-width: 22px;
+  text-align: right;
+}
+
+.thirds-td {
+  font-size: 10px;
+  font-weight: 800;
+  min-width: 24px;
+  text-align: right;
+}
+
+.thirds-gf {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  min-width: 20px;
+  text-align: right;
+}
+
+.thirds-note {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 700;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: center;
+}

@@ -30,7 +30,7 @@ const SUB_TABS = {
     { id: "max", label: "Max Punkte" },
     { id: "form", label: "Form" },
     { id: "h2h", label: "Head-to-Head" },
-    { id: "verlauf", label: "Stärke" },
+    { id: "gruppendritte", label: "Gruppendritte" },
   ],
 };
 
@@ -372,10 +372,10 @@ function GamesPanel({ subTab, upcomingByDate, played, live, upcoming }) {
   </div>;
 }
 
-function StatsPanel({ subTab, maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson, standings, teamStats }) {
+function StatsPanel({ subTab, maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson, standings, teamStats, live, played, upcoming }) {
   if (subTab === "form") return <StatsFormCard rows={formRows} />;
   if (subTab === "h2h") return <HeadToHead stats={h2hStats} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson} />;
-  if (subTab === "verlauf") return <TeamStrengthCard standings={standings} teamStats={teamStats} />;
+  if (subTab === "gruppendritte") return <GroupThirdsCard live={live} played={played} upcoming={upcoming} />;
   return <StatsMaxPointsCard rows={maxPossibleRows} />;
 }
 
@@ -409,38 +409,55 @@ function StatsMaxPointsCard({ rows }) {
   </article>;
 }
 
-function TeamStrengthCard({ standings, teamStats }) {
-  if (!standings.length || !teamStats) return <EmptyState title="Keine Team-Daten" text="Sobald Spiele gespielt wurden, erscheint hier die Team-Stärke." />;
-  const rows = standings.map((row, index) => {
-    const teams = row.teams.map(team => ({ team, ...(teamStats[team] || { gf: 0, ga: 0, pts: 0, played: 0, won: 0, drawn: 0, lost: 0 }) }));
-    const totalGf = teams.reduce((s, t) => s + t.gf, 0);
-    const totalGa = teams.reduce((s, t) => s + t.ga, 0);
-    const bestTeam = [...teams].sort((a, b) => b.gf - a.gf)[0];
-    return { ...row, rank: index + 1, teams, totalGf, totalGa, bestTeam };
-  }).sort((a, b) => b.totalGf - a.totalGf);
-  const maxGf = Math.max(1, ...rows.map(r => r.totalGf));
+function GroupThirdsCard({ live, played, upcoming }) {
+  const groupData = buildGroupData(live, played, upcoming);
+  const thirds = groupData
+    .filter(g => g.standings.length >= 3)
+    .map(g => ({ group: g.group, ...g.standings[2] }))
+    .sort((a, b) =>
+      b.pts - a.pts ||
+      b.td - a.td ||
+      b.gf - a.gf ||
+      (FIFA_RANKS[a.team] || 999) - (FIFA_RANKS[b.team] || 999)
+    );
+
+  if (!thirds.length) return <EmptyState title="Noch keine Gruppendritte" text="Sobald in jeder Gruppe mindestens 2 Spiele gespielt wurden, erscheinen hier die Gruppendritten." />;
+
   return <article className="what-card analysis-card stats-card">
     <div className="analysis-head">
       <div>
-        <h3>⚽ Team-Stärke</h3>
-        <p>Wie viele Tore haben die Teams jedes Teilnehmers bisher geschossen?</p>
+        <h3>🔀 Gruppendritte</h3>
+        <p>Die besten 8 von 12 kommen weiter. Sortiert nach Punkten, TD, Toren, FIFA-Rang.</p>
       </div>
-      <span className="analysis-badge">Alle Teams</span>
+      <span className="analysis-badge">{thirds.length}/12 Gruppen</span>
     </div>
-    <div className="strength-list">
-      {rows.map((row, i) => <div className="strength-row" key={row.person}>
-        <span className="strength-rank">{i + 1}.</span>
-        <div className="strength-info">
-          <div className="strength-head">
-            <strong style={{ color: COLORS[row.person] }}>{row.person}</strong>
-            <span className="strength-goals">{row.totalGf} Tore · TD {row.totalGf - row.totalGa >= 0 ? "+" : ""}{row.totalGf - row.totalGa}</span>
+    <div className="thirds-list">
+      {thirds.map((t, i) => {
+        const advancing = i < 8;
+        const teamOwner = ownerOf(t.team);
+        return (
+          <div key={t.team}>
+            {i === 0 && <div className="thirds-section-label advancing">✅ Kommen weiter — Plätze 1–8</div>}
+            {i === 8 && <div className="thirds-section-label eliminated">❌ Scheiden aus — Plätze 9–12</div>}
+            <div className={`thirds-row${advancing ? " advancing" : " eliminated"}`}>
+              <span className="thirds-rank">{i + 1}.</span>
+              <div className="thirds-team">
+                <span className="thirds-flag">{FLAGS[t.team] || "🏳️"}</span>
+                <div className="thirds-info">
+                  <strong>{DE[t.team] || t.team}</strong>
+                  <small>Gruppe {t.group}{teamOwner ? <> · <span style={{ color: COLORS[teamOwner] }}>{teamOwner}</span></> : ""}</small>
+                </div>
+              </div>
+              <div className="thirds-stats">
+                <span className="thirds-pts">{t.pts}P</span>
+                <span className="thirds-td" style={{ color: tdColor(t.td) }}>{t.td > 0 ? "+" : ""}{t.td}</span>
+                <span className="thirds-gf">{t.gf}T</span>
+              </div>
+            </div>
           </div>
-          <div className="strength-bar-wrap">
-            <div className="strength-bar" style={{ width: `${row.totalGf === 0 ? 0 : Math.max(4, Math.round((row.totalGf / maxGf) * 100))}%`, background: COLORS[row.person] }} />
-          </div>
-          {row.bestTeam?.gf > 0 && <small className="strength-best">Bestes Team: {displayTeamName(row.bestTeam.team)} ({row.bestTeam.gf} Tore)</small>}
-        </div>
-      </div>)}
+        );
+      })}
+      {thirds.length < 12 && <p className="thirds-note">⏳ Noch {12 - thirds.length} Gruppe(n) ohne Drittplatzierten — Stand kann sich noch ändern.</p>}
     </div>
   </article>;
 }
@@ -692,7 +709,7 @@ export default function App() {
   } else if (tab === "spiele") {
     screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} upcoming={upcoming} />;
   } else if (tab === "stats") {
-    screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} standings={standings} teamStats={teamStats} />;
+    screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} standings={standings} teamStats={teamStats} live={live} played={played} upcoming={upcoming} />;
   } else if (tab === "mein") {
     screen = <MyPanel selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} standings={standings} liveProjectionStandings={liveProjectionStandings} live={live} upcoming={upcoming} played={played} />;
   }
