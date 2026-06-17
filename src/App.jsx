@@ -68,6 +68,24 @@ function StatChip({ label, value, color }) {
   return <div className="stat-chip"><span>{label}</span><strong style={{ color: color || "#e2e8f0" }}>{value}</strong></div>;
 }
 
+function buildRoundProgress(person, allMatches) {
+  const teams = PARTICIPANTS[person] || [];
+  const rounds = [[], [], []];
+  for (const team of teams) {
+    const teamGames = allMatches
+      .filter(m => m.homeTeam === team || m.awayTeam === team)
+      .sort((a, b) => (`${a.date || "9999"} ${a.time || "99:99"}`).localeCompare(`${b.date || "9999"} ${b.time || "99:99"}`));
+    for (let i = 0; i < 3; i++) {
+      if (teamGames[i]) rounds[i].push(teamGames[i]);
+    }
+  }
+  return rounds.map((games, i) => ({
+    round: i + 1,
+    played: games.filter(g => g.status === "FINISHED").length,
+    total: games.length,
+  }));
+}
+
 function TeamBlock({ team, align = "left" }) {
   const owner = ownerOf(team);
   return <div className="team-block" style={{ textAlign: align }}>
@@ -118,7 +136,7 @@ function SubTabs({ activeTab, activeSubTab, onChange, liveCount }) {
   </nav>;
 }
 
-function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, officialMeta = null, prevRankSnapshot = null, onTeamClick = null, liveRankMap = null }) {
+function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, officialMeta = null, prevRankSnapshot = null, onTeamClick = null, liveRankMap = null, allMatches = [] }) {
   const progress = maxPts > 0 ? Math.max(row.pts === 0 ? 0 : 6, Math.round((row.pts / maxPts) * 100)) : 0;
   const currentRank = index + 1;
   const officialRank = officialMeta?.rank || currentRank;
@@ -157,6 +175,25 @@ function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, off
         <StatChip label="Tore" value={`${row.gf}:${row.ga}`} />
         <StatChip label="TD" value={`${row.td > 0 ? "+" : ""}${row.td}`} color={tdColor(row.td)} />
       </div>
+      {!liveMode && allMatches.length > 0 && (() => {
+        const rounds = buildRoundProgress(row.person, allMatches);
+        return (
+          <div className="round-progress">
+            {rounds.map(r => {
+              const done = r.total > 0 && r.played === r.total;
+              const partial = r.played > 0 && !done;
+              return (
+                <div key={r.round} className={`round-chip${done ? " done" : partial ? " partial" : " pending"}`}>
+                  <span className="round-label">Runde {r.round}</span>
+                  <span className="round-status">
+                    {done ? "✅" : partial ? `⏳ ${r.played}/${r.total}` : "🔜"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
       <div className="team-pill-grid">
         {sortedTeams.map(team => (
           <span
@@ -175,11 +212,11 @@ function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, off
   </article>;
 }
 
-function StandingsPanel({ standings, liveMode = false, officialRanks = {}, openPerson, setOpenPerson, prevRankSnapshot = null, onTeamClick = null, liveRankMap = null }) {
+function StandingsPanel({ standings, liveMode = false, officialRanks = {}, openPerson, setOpenPerson, prevRankSnapshot = null, onTeamClick = null, liveRankMap = null, allMatches = [] }) {
   const maxPts = Math.max(1, ...standings.map(row => row.pts));
   if (!standings.length) return <EmptyState title="Noch keine Tabelle" text="Sobald Ergebnisse geladen werden, erscheint hier die Rangliste." />;
   return <div className="standings-list">
-    {standings.map((row, index) => <StandingRow key={row.person} row={row} index={index} maxPts={maxPts} open={openPerson === row.person} onToggle={() => setOpenPerson(openPerson === row.person ? "" : row.person)} liveMode={liveMode} officialMeta={liveMode ? officialRanks[row.person] : null} prevRankSnapshot={prevRankSnapshot} onTeamClick={onTeamClick} liveRankMap={liveRankMap} />)}
+    {standings.map((row, index) => <StandingRow key={row.person} row={row} index={index} maxPts={maxPts} open={openPerson === row.person} onToggle={() => setOpenPerson(openPerson === row.person ? "" : row.person)} liveMode={liveMode} officialMeta={liveMode ? officialRanks[row.person] : null} prevRankSnapshot={prevRankSnapshot} onTeamClick={onTeamClick} liveRankMap={liveRankMap} allMatches={allMatches} />)}
   </div>;
 }
 
@@ -701,7 +738,7 @@ export default function App() {
 
   let screen = null;
   if (tab === "liga") {
-    screen = <StandingsPanel standings={standings} openPerson={openPerson} setOpenPerson={setOpenPerson} prevRankSnapshot={prevRankSnapshot} onTeamClick={setSelectedTeam} liveRankMap={liveRankMap} />;
+    screen = <StandingsPanel standings={standings} openPerson={openPerson} setOpenPerson={setOpenPerson} prevRankSnapshot={prevRankSnapshot} onTeamClick={setSelectedTeam} liveRankMap={liveRankMap} allMatches={[...played, ...live, ...upcoming]} />;
   } else if (tab === "live") {
     screen = activeSubTab === "prognose"
       ? <ProjectionPanel live={live} liveProjectionStandings={liveProjectionStandings} officialRanks={officialRanks} openPerson={openPerson} setOpenPerson={setOpenPerson} />
