@@ -530,6 +530,41 @@ function PersonSelector({ selected, onSelect }) {
   return <div className="person-selector">{Object.keys(PARTICIPANTS).map(person => <button key={person} className={selected === person ? "active" : ""} onClick={() => onSelect(person)} style={{ "--accent": COLORS[person] }}>{person}</button>)}</div>;
 }
 
+function PersonMatchesPanel({ person, played, live, upcoming }) {
+  const liveIds = new Set(live.map(match => match.id).filter(Boolean));
+  const matches = [...played, ...live, ...upcoming]
+    .filter(match => ownerOf(match.homeTeam) === person || ownerOf(match.awayTeam) === person)
+    .sort(matchSortAsc);
+  const finishedCount = matches.filter(match => match.status === "FINISHED").length;
+  const liveCount = matches.filter(match => liveIds.has(match.id)).length;
+  const upcomingCount = matches.length - finishedCount - liveCount;
+
+  return <section className="section-block person-matches-panel">
+    <div className="section-title-row">
+      <h2>Alle Spiele von {person}</h2>
+      <span>{matches.length}</span>
+    </div>
+    <div className="person-match-summary">
+      <InfoPill label="Beendet" value={finishedCount} color="#34d399" />
+      <InfoPill label="Live" value={liveCount} color="#ef4444" />
+      <InfoPill label="Offen" value={upcomingCount} color="#fbbf24" />
+    </div>
+    <div className="card-stack slim">
+      {matches.length === 0
+        ? <EmptyState title="Keine Spiele gefunden" text="Für diesen Teilnehmer sind aktuell keine Spiele in den geladenen Daten." compact />
+        : matches.map((match, index) => (
+            <ScoreCard
+              key={`person-${person}-${match.id || index}`}
+              match={match}
+              live={liveIds.has(match.id)}
+              compact
+            />
+          ))
+      }
+    </div>
+  </section>;
+}
+
 function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionStandings, live, upcoming, played }) {
   const selectedRank = standings.findIndex(row => row.person === selectedPerson);
   const row = standings[selectedRank] || standings[0];
@@ -611,6 +646,7 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
         : <EmptyState title="Kein nächstes Spiel gefunden" text="Aktuell liefert die API kein anstehendes Spiel für diesen Teilnehmer." compact />
       }
     </section>
+    <PersonMatchesPanel person={row.person} played={played} live={live} upcoming={upcoming} />
   </div>;
 }
 
