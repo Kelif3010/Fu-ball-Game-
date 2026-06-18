@@ -250,8 +250,54 @@ function ScoreCard({ match, live = false, onClick = null, selected = false, comp
   </article>;
 }
 
+function MatchImpactPanel({ match }) {
+  const [open, setOpen] = useState(false);
+  const homeOwner = ownerOf(match.homeTeam);
+  const awayOwner = ownerOf(match.awayTeam);
+  if (!homeOwner && !awayOwner) return null;
+  const sameOwner = homeOwner && homeOwner === awayOwner;
+  const title = sameOwner
+    ? `${homeOwner} hat beide Teams`
+    : homeOwner && awayOwner
+      ? `Direktes Duell: ${homeOwner} vs ${awayOwner}`
+      : `${homeOwner || awayOwner} kann punkten`;
+
+  return <div className={`match-impact-panel${open ? " open" : ""}`}>
+    <button className="match-impact-toggle" onClick={() => setOpen(!open)}>
+      <span>{title}</span>
+      <strong>{open ? "▲" : "▼"}</strong>
+    </button>
+    {open && <div className="match-impact-body">
+      {sameOwner ? (
+        <>
+          <p>Jedes Ergebnis bringt Punkte für {homeOwner}, weil beide Teams ihm gehören.</p>
+          <div className="impact-option-grid">
+            <InfoPill label={`${DE[match.homeTeam] || match.homeTeam}-Sieg`} value={`+3 ${homeOwner}`} color={COLORS[homeOwner]} />
+            <InfoPill label="Remis" value={`+2 ${homeOwner}`} color={COLORS[homeOwner]} />
+            <InfoPill label={`${DE[match.awayTeam] || match.awayTeam}-Sieg`} value={`+3 ${homeOwner}`} color={COLORS[homeOwner]} />
+          </div>
+        </>
+      ) : (
+        <>
+          {homeOwner && <p>{homeOwner} profitiert von einem Sieg von {displayTeamName(match.homeTeam)}.</p>}
+          {awayOwner && <p>{awayOwner} profitiert von einem Sieg von {displayTeamName(match.awayTeam)}.</p>}
+          {homeOwner && awayOwner && <p>Ein Remis bringt beiden jeweils 1 Punkt.</p>}
+          <div className="impact-option-grid">
+            {homeOwner && <InfoPill label={`${DE[match.homeTeam] || match.homeTeam}-Sieg`} value={`+3 ${homeOwner}`} color={COLORS[homeOwner]} />}
+            {homeOwner && awayOwner && <InfoPill label="Remis" value={`+1 / +1`} />}
+            {awayOwner && <InfoPill label={`${DE[match.awayTeam] || match.awayTeam}-Sieg`} value={`+3 ${awayOwner}`} color={COLORS[awayOwner]} />}
+          </div>
+        </>
+      )}
+    </div>}
+  </div>;
+}
+
 function UpcomingCard({ match }) {
-  return <ScoreCard match={match} compact />;
+  return <div className="upcoming-match-item">
+    <ScoreCard match={match} compact />
+    <MatchImpactPanel match={match} />
+  </div>;
 }
 
 function PlayerRow({ player, index }) {
@@ -530,6 +576,71 @@ function PersonSelector({ selected, onSelect }) {
   return <div className="person-selector">{Object.keys(PARTICIPANTS).map(person => <button key={person} className={selected === person ? "active" : ""} onClick={() => onSelect(person)} style={{ "--accent": COLORS[person] }}>{person}</button>)}</div>;
 }
 
+function PersonTeamsPanel({ person, played, live, upcoming }) {
+  const [openTeam, setOpenTeam] = useState("");
+  const allMatches = [...played, ...live, ...upcoming];
+  const finishedMatches = [...played, ...live.filter(match => Number.isFinite(Number(match.homeGoals)) && Number.isFinite(Number(match.awayGoals)))];
+  const teamStats = buildTeamStats(finishedMatches);
+  const groupData = buildGroupData(live, played, upcoming);
+  const groupByTeam = {};
+  for (const group of groupData) {
+    group.standings.forEach((row, index) => {
+      groupByTeam[row.team] = { group: group.group, rank: index + 1, row };
+    });
+  }
+  const teams = PARTICIPANTS[person] || [];
+
+  return <section className="section-block person-teams-panel">
+    <div className="section-title-row">
+      <h2>Teams von {person}</h2>
+      <span>{teams.length}</span>
+    </div>
+    <div className="person-team-list">
+      {teams.map(team => {
+        const stats = teamStats[team] || { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, pts: 0 };
+        const groupMeta = groupByTeam[team];
+        const teamMatches = allMatches
+          .filter(match => match.homeTeam === team || match.awayTeam === team)
+          .sort(matchSortAsc);
+        const isOpen = openTeam === team;
+        const td = (stats.gf || 0) - (stats.ga || 0);
+        return <article className={`person-team-card${isOpen ? " open" : ""}`} key={team}>
+          <button className="person-team-toggle" onClick={() => setOpenTeam(isOpen ? "" : team)}>
+            <span className="person-team-main">
+              <strong>{displayTeamName(team)}</strong>
+              <small>{groupMeta ? `Gruppe ${groupMeta.group} · Platz ${groupMeta.rank}` : "Gruppe offen"}</small>
+            </span>
+            <span className="person-team-score">
+              <strong>{stats.pts || 0}P</strong>
+              <small>{stats.gf || 0}:{stats.ga || 0}</small>
+            </span>
+            <span className="person-team-chevron">{isOpen ? "▲" : "▼"}</span>
+          </button>
+          {isOpen && <div className="person-team-body">
+            <div className="stat-grid">
+              <StatChip label="Sp" value={stats.played || 0} />
+              <StatChip label="S" value={stats.won || 0} color="#34d399" />
+              <StatChip label="U" value={stats.drawn || 0} />
+              <StatChip label="N" value={stats.lost || 0} color="#f87171" />
+              <StatChip label="Tore" value={`${stats.gf || 0}:${stats.ga || 0}`} />
+              <StatChip label="TD" value={`${td > 0 ? "+" : ""}${td}`} color={tdColor(td)} />
+            </div>
+            {groupMeta && <div className="team-group-note">
+              <strong>Aktuell Platz {groupMeta.rank} in Gruppe {groupMeta.group}</strong>
+              <span>{groupMeta.rank === 1 ? "Gruppensieger-Kurs" : groupMeta.rank === 2 ? "Direkt weiter-Kurs" : groupMeta.rank === 3 ? "Dritter Platz" : "Muss aufholen"}</span>
+            </div>}
+            <div className="card-stack slim">
+              {teamMatches.length === 0
+                ? <EmptyState title="Keine Spiele gefunden" text="Für dieses Team sind aktuell keine Spiele geladen." compact />
+                : teamMatches.map((match, index) => <ScoreCard key={`${team}-${match.id || index}`} match={match} live={live.some(item => item.id === match.id)} compact />)}
+            </div>
+          </div>}
+        </article>;
+      })}
+    </div>
+  </section>;
+}
+
 function PersonMatchesPanel({ person, played, live, upcoming }) {
   const liveIds = new Set(live.map(match => match.id).filter(Boolean));
   const matches = [...played, ...live, ...upcoming]
@@ -580,6 +691,7 @@ function MyPanel({ selectedPerson, setSelectedPerson, standings, liveProjectionS
       <div className="my-head"><div><h2>{rankLabel(selectedRank)} {row.person}</h2><p>{row.played} Spiele gewertet</p></div><div><small>Pkt</small><strong>{row.pts}</strong></div></div>
       <div className="stat-grid"><StatChip label="S" value={row.won} color="#34d399" /><StatChip label="U" value={row.drawn} /><StatChip label="N" value={row.lost} color="#f87171" /><StatChip label="TD" value={`${row.td > 0 ? "+" : ""}${row.td}`} color={tdColor(row.td)} /></div>
     </article>
+    <PersonTeamsPanel person={row.person} played={played} live={live} upcoming={upcoming} />
     <article className="what-card analysis-card">
       <div className="analysis-head">
         <div>
