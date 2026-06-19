@@ -236,7 +236,7 @@ export default async function handler(req, res) {
     const selectedGroupMatches = transformed.filter(m => m.stage === "GROUP_STAGE").filter(isKnownSelectedMatch);
     const knockout = transformed
       .filter(m => m.stage && m.stage !== "GROUP_STAGE")
-      .map(toUpcomingMatch)
+      .map(toScoreMatch)
       .sort((a, b) => `${a.date || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999-99-99"} ${b.time || "99:99"}`));
 
     const live = selectedGroupMatches

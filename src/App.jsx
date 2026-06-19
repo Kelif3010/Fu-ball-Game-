@@ -3,6 +3,7 @@ import HeadToHead from "./HeadToHead";
 import { PARTICIPANTS, FLAGS, DE, COLORS, displayTeamName, FIFA_RANKS } from "./shared";
 import { formatDate, formatCountdown, statusLabel, rankLabel, tdColor, movementColor, pointsMovementText, rankMovementText } from './utils/format.js';
 import { buildTeamStats, buildStandings, compareStandingRows, rankMap, buildHeadToHeadStats, buildFormComparisonRows, buildMyAnalysis, buildOpenMatchMap, buildMaxPossibleRows, getPersonMatches, getMatchTitle, buildGroupData, ownerOf, matchSortAsc, matchSortDesc } from './utils/standings.js';
+import { bonusRules, buildBonusRows } from './utils/bonus.js';
 import { useScores } from './hooks/useScores.js';
 import { useStandings } from './hooks/useStandings.js';
 import './App.css';
@@ -33,6 +34,7 @@ const SUB_TABS = {
     { id: "h2h", label: "Head-to-Head" },
     { id: "gruppendritte", label: "Gruppendritte" },
     { id: "tore", label: "Torschützen" },
+    { id: "bonus", label: "Bonus" },
   ],
 };
 
@@ -149,6 +151,7 @@ function SubTabs({ activeTab, activeSubTab, onChange, liveCount }) {
 
 function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, officialMeta = null, prevRankSnapshot = null, onTeamClick = null, liveRankMap = null, allMatches = [] }) {
   const progress = maxPts > 0 ? Math.max(row.pts === 0 ? 0 : 6, Math.round((row.pts / maxPts) * 100)) : 0;
+  const hasBonus = Number.isFinite(row.bonusTotal);
   const currentRank = index + 1;
   const officialRank = officialMeta?.rank || currentRank;
   const rankDelta = officialRank - currentRank;
@@ -170,7 +173,11 @@ function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, off
         <strong>{row.person}</strong>
         <small>{sortedTeams.map(team => FLAGS[team] || "").join(" ")}</small>
       </span>
-      <span className="standing-points"><small>Pkt</small><strong>{row.pts}</strong></span>
+      <span className="standing-points">
+        <small>{hasBonus ? "Gesamt" : "Pkt"}</small>
+        <strong>{row.pts}</strong>
+        {hasBonus && <em>{row.normalPts} + {row.bonusTotal}</em>}
+      </span>
     </button>
     <div className="progress-wrap"><div className="progress-track"><div /></div>{index === 0 && <span>Spitze</span>}</div>
     {liveMode && officialMeta && <div className="live-movement-row">
@@ -186,6 +193,13 @@ function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, off
         <StatChip label="Tore" value={`${row.gf}:${row.ga}`} />
         <StatChip label="TD" value={`${row.td > 0 ? "+" : ""}${row.td}`} color={tdColor(row.td)} />
       </div>
+      {hasBonus && <div className="bonus-mini-grid">
+        <StatChip label="Normal" value={row.normalPts} />
+        <StatChip label="Gruppe" value={`+${row.groupBonus || 0}`} color="#fbbf24" />
+        <StatChip label="K.o." value={`+${row.knockoutBonus || 0}`} color="#38bdf8" />
+        <StatChip label="WM" value={`+${row.championBonus || 0}`} color="#34d399" />
+        <StatChip label="Gesamt" value={row.totalPts} color={COLORS[row.person]} />
+      </div>}
       {!liveMode && allMatches.length > 0 && (() => {
         const rounds = buildRoundProgress(row.person, allMatches);
         return (
@@ -228,6 +242,16 @@ function StandingsPanel({ standings, liveMode = false, officialRanks = {}, openP
   if (!standings.length) return <EmptyState title="Noch keine Tabelle" text="Sobald Ergebnisse geladen werden, erscheint hier die Rangliste." />;
   return <div className="standings-list">
     {standings.map((row, index) => <StandingRow key={row.person} row={row} index={index} maxPts={maxPts} open={openPerson === row.person} onToggle={() => setOpenPerson(openPerson === row.person ? "" : row.person)} liveMode={liveMode} officialMeta={liveMode ? officialRanks[row.person] : null} prevRankSnapshot={prevRankSnapshot} onTeamClick={onTeamClick} liveRankMap={liveRankMap} allMatches={allMatches} />)}
+  </div>;
+}
+
+function LeagueModeToggle({ mode, onChange }) {
+  return <div className="league-mode-toggle">
+    <span>Wertung</span>
+    <div>
+      <button className={mode === "normal" ? "active" : ""} onClick={() => onChange("normal")}>Normal</button>
+      <button className={mode === "bonus" ? "active" : ""} onClick={() => onChange("bonus")}>Mit Bonus</button>
+    </div>
   </div>;
 }
 
@@ -625,12 +649,75 @@ function GamesPanel({ subTab, upcomingByDate, played, live, upcoming, knockout, 
   </div>;
 }
 
-function StatsPanel({ subTab, maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson, standings, teamStats, live, played, upcoming, scorers }) {
+function StatsPanel({ subTab, maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson, standings, teamStats, live, played, upcoming, scorers, bonusRows }) {
   if (subTab === "form") return <StatsFormCard rows={formRows} />;
   if (subTab === "h2h") return <HeadToHead stats={h2hStats} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson} />;
   if (subTab === "gruppendritte") return <GroupThirdsCard live={live} played={played} upcoming={upcoming} />;
   if (subTab === "tore") return <ScorersCard scorers={scorers} />;
+  if (subTab === "bonus") return <BonusCard rows={bonusRows} />;
   return <StatsMaxPointsCard rows={maxPossibleRows} />;
+}
+
+function BonusCard({ rows = [] }) {
+  if (!rows.length) return <EmptyState title="Keine Bonusdaten" text="Sobald Gruppen- oder K.o.-Daten geladen sind, erscheint hier die Bonuswertung." />;
+  return <div className="card-stack">
+    <article className="what-card analysis-card bonus-rules-card">
+      <div className="analysis-head">
+        <div>
+          <h3>Bonusregeln</h3>
+          <p>Gruppenbonus nach aktuellem Gruppenstand. K.o.-Bonus zählt als höchste erreichte Runde, Weltmeister gibt extra Punkte.</p>
+        </div>
+        <span className="analysis-badge">Aktuell</span>
+      </div>
+      <div className="bonus-rule-grid">
+        <StatChip label="Gruppensieger" value={`+${bonusRules.group.winner}`} color="#fbbf24" />
+        <StatChip label="Zweiter" value={`+${bonusRules.group.runnerUp}`} color="#fbbf24" />
+        <StatChip label="Top-3." value={`+${bonusRules.group.bestThird}`} color="#fbbf24" />
+        <StatChip label="Finale" value={`+${bonusRules.knockout.FINAL}`} color="#38bdf8" />
+        <StatChip label="Weltmeister" value={`+${bonusRules.champion}`} color="#34d399" />
+      </div>
+    </article>
+    <article className="what-card analysis-card stats-card bonus-card">
+      <div className="analysis-head">
+        <div>
+          <h3>Bonuswertung</h3>
+          <p>Normale Punkte plus Gruppen-, K.o.- und Weltmeisterbonus.</p>
+        </div>
+        <span className="analysis-badge">{rows.length}</span>
+      </div>
+      <div className="bonus-list">
+        {rows.map((row, index) => <article className="bonus-row" key={row.person} style={{ "--accent": COLORS[row.person] }}>
+          <div className="bonus-row-head">
+            <span className="bonus-rank">{index + 1}</span>
+            <div>
+              <strong>{row.person}</strong>
+              <small>{row.normalPts} normal · +{row.bonusTotal} Bonus</small>
+            </div>
+            <div className="bonus-total">
+              <strong>{row.totalPts}</strong>
+              <small>Gesamt</small>
+            </div>
+          </div>
+          <div className="bonus-breakdown">
+            <InfoPill label="Gruppe" value={`+${row.groupBonus || 0}`} color="#fbbf24" />
+            <InfoPill label="K.o." value={`+${row.knockoutBonus || 0}`} color="#38bdf8" />
+            <InfoPill label="WM" value={`+${row.championBonus || 0}`} color="#34d399" />
+          </div>
+          <div className="bonus-details">
+            {row.bonusDetails.length === 0
+              ? <p>Noch keine Bonuspunkte.</p>
+              : row.bonusDetails.map((detail, detailIndex) => (
+                <div key={`${row.person}-${detail.team}-${detail.type}-${detailIndex}`}>
+                  <span>{displayTeamName(detail.team)}</span>
+                  <strong>+{detail.points}</strong>
+                  <small>{detail.label}</small>
+                </div>
+              ))}
+          </div>
+        </article>)}
+      </div>
+    </article>
+  </div>;
 }
 
 function ScorersCard({ scorers = [] }) {
@@ -1089,6 +1176,7 @@ export default function App() {
   const [openPerson, setOpenPerson] = useState("");
   const [selectedPerson, setSelectedPerson] = useState("Ken");
   const [selectedH2hPerson, setSelectedH2hPerson] = useState("Ken");
+  const [leagueMode, setLeagueMode] = useState("normal");
   const [prevRankSnapshot] = useState(() => loadRankSnapshot());
   const [selectedTeam, setSelectedTeam] = useState(null);
   const handleTabChange = useCallback((id) => {
@@ -1104,13 +1192,21 @@ export default function App() {
     liveProjectionStandings.reduce((acc, row, i) => { acc[row.person] = i + 1; return acc; }, {}),
     [liveProjectionStandings]
   );
+  const bonusRows = useMemo(() =>
+    buildBonusRows({ standings, live, played, upcoming, knockout }),
+    [standings, live, played, upcoming, knockout]
+  );
 
   const activeSubTab = subTabs[tab];
   const changeSubTab = id => setSubTabs(prev => ({ ...prev, [tab]: id }));
 
   let screen = null;
   if (tab === "liga") {
-    screen = <StandingsPanel standings={standings} openPerson={openPerson} setOpenPerson={setOpenPerson} prevRankSnapshot={prevRankSnapshot} onTeamClick={setSelectedTeam} liveRankMap={liveRankMap} allMatches={[...played, ...live, ...upcoming]} />;
+    const tableRows = leagueMode === "bonus" ? bonusRows : standings;
+    screen = <div className="card-stack">
+      <LeagueModeToggle mode={leagueMode} onChange={setLeagueMode} />
+      <StandingsPanel standings={tableRows} openPerson={openPerson} setOpenPerson={setOpenPerson} prevRankSnapshot={leagueMode === "normal" ? prevRankSnapshot : null} onTeamClick={setSelectedTeam} liveRankMap={leagueMode === "normal" ? liveRankMap : null} allMatches={[...played, ...live, ...upcoming]} />
+    </div>;
   } else if (tab === "live") {
     screen = activeSubTab === "prognose"
       ? <ProjectionPanel live={live} liveProjectionStandings={liveProjectionStandings} officialRanks={officialRanks} openPerson={openPerson} setOpenPerson={setOpenPerson} />
@@ -1118,7 +1214,7 @@ export default function App() {
   } else if (tab === "spiele") {
     screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} upcoming={upcoming} knockout={knockout} standings={standings} />;
   } else if (tab === "stats") {
-    screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} standings={standings} teamStats={teamStats} live={live} played={played} upcoming={upcoming} scorers={scorers} />;
+    screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} standings={standings} teamStats={teamStats} live={live} played={played} upcoming={upcoming} scorers={scorers} bonusRows={bonusRows} />;
   } else if (tab === "mein") {
     screen = <MyPanel selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} standings={standings} liveProjectionStandings={liveProjectionStandings} live={live} upcoming={upcoming} played={played} />;
   }
