@@ -22,6 +22,7 @@ export function useScores() {
   const [live, setLive] = useState([]);
   const [played, setPlayed] = useState([]);
   const [upcoming, setUpcoming] = useState([]);
+  const [knockout, setKnockout] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [updated, setUpdated] = useState(null);
@@ -44,6 +45,7 @@ export function useScores() {
       setLive(Array.isArray(data.live) ? data.live : []);
       setPlayed(Array.isArray(data.played) ? data.played : []);
       setUpcoming(Array.isArray(data.upcoming) ? data.upcoming : []);
+      setKnockout(Array.isArray(data.knockout) ? data.knockout : []);
       setRefreshSeconds(apiRefreshSeconds);
       setSecondsLeft(apiRefreshSeconds);
       setUpdated(new Date());
@@ -111,7 +113,7 @@ export function useScores() {
   }, [load, refreshSeconds]);
 
   return {
-    live, played, upcoming,
+    live, played, upcoming, knockout,
     loading, error, updated,
     refreshSeconds, secondsLeft,
     expandedMatchId,

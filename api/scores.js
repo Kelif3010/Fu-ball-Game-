@@ -111,6 +111,7 @@ function getBerlinDateAndTime(utcDate) {
 }
 
 function getGroup(match) {
+  if (match?.stage && match.stage !== "GROUP_STAGE") return "";
   const raw = match?.group || match?.stage || "";
   if (!raw) return "";
   return String(raw).replace(/^GROUP[_\s-]*/i, "").replace(/^GRUPPE[_\s-]*/i, "");
@@ -160,6 +161,7 @@ function transformMatch(match) {
     date,
     time,
     group: getGroup(match),
+    stage: match.stage || "",
     status: match.status || "",
     minute: estimateLiveMinute(match),
   };
@@ -169,12 +171,12 @@ function isKnownSelectedMatch(m) {
   return ALL_TEAMS.has(m.homeTeam) && ALL_TEAMS.has(m.awayTeam);
 }
 
-function toScoreMatch({ id, homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, status, minute }) {
-  return { id, homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, status, minute };
+function toScoreMatch({ id, homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, stage, status, minute }) {
+  return { id, homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, stage, status, minute };
 }
 
-function toUpcomingMatch({ id, homeTeam, awayTeam, date, time, group, status }) {
-  return { id, homeTeam, awayTeam, date, time, group, status };
+function toUpcomingMatch({ id, homeTeam, awayTeam, date, time, group, stage, status }) {
+  return { id, homeTeam, awayTeam, date, time, group, stage, status };
 }
 
 export default async function handler(req, res) {
@@ -190,7 +192,6 @@ export default async function handler(req, res) {
 
   const url = new URL("https://api.football-data.org/v4/competitions/WC/matches");
   url.searchParams.set("season", "2026");
-  url.searchParams.set("stage", "GROUP_STAGE");
 
   try {
     const fdRes = await fetch(url, {
@@ -205,19 +206,24 @@ export default async function handler(req, res) {
     }
 
     const matches = Array.isArray(data?.matches) ? data.matches : [];
-    const transformed = matches.map(transformMatch).filter(isKnownSelectedMatch);
+    const transformed = matches.map(transformMatch);
+    const selectedGroupMatches = transformed.filter(m => m.stage === "GROUP_STAGE").filter(isKnownSelectedMatch);
+    const knockout = transformed
+      .filter(m => m.stage && m.stage !== "GROUP_STAGE")
+      .map(toUpcomingMatch)
+      .sort((a, b) => `${a.date || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999-99-99"} ${b.time || "99:99"}`));
 
-    const live = transformed
+    const live = selectedGroupMatches
       .filter(m => LIVE_STATUSES.has(m.status) && Number.isInteger(m.homeGoals) && Number.isInteger(m.awayGoals))
       .map(toScoreMatch)
       .sort((a, b) => `${a.date || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999-99-99"} ${b.time || "99:99"}`));
 
-    const played = transformed
+    const played = selectedGroupMatches
       .filter(m => m.status === "FINISHED" && Number.isInteger(m.homeGoals) && Number.isInteger(m.awayGoals))
       .map(toScoreMatch)
       .sort((a, b) => `${b.date || "0000-00-00"} ${b.time || "00:00"}`.localeCompare(`${a.date || "0000-00-00"} ${a.time || "00:00"}`));
 
-    const upcoming = transformed
+    const upcoming = selectedGroupMatches
       .filter(m => m.status !== "FINISHED" && !LIVE_STATUSES.has(m.status) && !BLOCKED_STATUSES.has(m.status))
       .map(toUpcomingMatch)
       .sort((a, b) => `${a.date || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999-99-99"} ${b.time || "99:99"}`));
@@ -232,6 +238,7 @@ export default async function handler(req, res) {
       live,
       played,
       upcoming,
+      knockout,
     });
   } catch (error) {
     return res.status(500).json({ error: error?.message || "Unbekannter Serverfehler beim Abrufen der Fußball-Daten." });

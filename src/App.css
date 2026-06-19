@@ -2025,6 +2025,148 @@ body {
   font-weight: 900;
 }
 
+/* === Knockout === */
+
+.ko-panel .hint-box {
+  margin-bottom: 0;
+}
+
+.ko-round-section {
+  display: grid;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.ko-round-section.open {
+  border-color: rgba(251, 191, 36, 0.18);
+}
+
+.ko-round-header {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ko-round-section.open .ko-round-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.ko-round-title {
+  color: #fbbf24;
+  font-size: 13px;
+  font-weight: 950;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ko-round-meta {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.ko-round-body {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+}
+
+.ko-match-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.ko-match-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ko-match-meta span {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #94a3b8;
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ko-match-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.ko-team-block {
+  min-width: 0;
+}
+
+.ko-team-block strong {
+  display: block;
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ko-team-block.empty strong {
+  color: #64748b;
+  font-style: italic;
+}
+
+.ko-team-block small {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.ko-score-center {
+  min-width: 42px;
+  text-align: center;
+}
+
+.ko-score-center strong {
+  display: block;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.ko-owner-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 /* === Modal === */
 
 .modal-overlay {

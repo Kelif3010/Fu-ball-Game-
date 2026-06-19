@@ -25,6 +25,7 @@ const SUB_TABS = {
     { id: "demnaechst", label: "Demnächst" },
     { id: "ergebnisse", label: "Ergebnisse" },
     { id: "gruppen", label: "Gruppen" },
+    { id: "ko", label: "K.o." },
   ],
   stats: [
     { id: "max", label: "Max Punkte" },
@@ -44,6 +45,15 @@ function getMatchPointImpact(match) {
   if (ag > hg) return [{ person: hOwner, pts: 0 }, { person: aOwner, pts: 3 }].filter(x => x.person);
   return [{ person: hOwner, pts: 1 }, { person: aOwner, pts: 1 }].filter(x => x.person);
 }
+
+const KNOCKOUT_ROUNDS = [
+  { id: "LAST_32", label: "Runde der letzten 32" },
+  { id: "LAST_16", label: "Achtelfinale" },
+  { id: "QUARTER_FINALS", label: "Viertelfinale" },
+  { id: "SEMI_FINALS", label: "Halbfinale" },
+  { id: "THIRD_PLACE", label: "Spiel um Platz 3" },
+  { id: "FINAL", label: "Finale" },
+];
 
 
 const RANK_SNAPSHOT_KEY = "wm-liga-rank-snapshot";
@@ -515,12 +525,96 @@ function GroupsPanel({ live, played, upcoming }) {
   </div>;
 }
 
-function GamesPanel({ subTab, upcomingByDate, played, live, upcoming, standings }) {
+function KnockoutTeamBlock({ team, align = "left" }) {
+  const hasTeam = Boolean(team);
+  const owner = hasTeam ? ownerOf(team) : "";
+  return <div className={`ko-team-block ${!hasTeam ? "empty" : ""}`} style={{ textAlign: align }}>
+    <strong>{hasTeam ? (align === "right" ? `${DE[team] || team} ${FLAGS[team] || ""}`.trim() : displayTeamName(team)) : "Noch offen"}</strong>
+    {owner && <small style={{ color: COLORS[owner] }}>{owner}</small>}
+  </div>;
+}
+
+function KnockoutCard({ match }) {
+  const hg = Number(match.homeGoals);
+  const ag = Number(match.awayGoals);
+  const hasScore = Number.isFinite(hg) && Number.isFinite(ag);
+  const homeOwner = ownerOf(match.homeTeam);
+  const awayOwner = ownerOf(match.awayTeam);
+  const hasOwners = homeOwner || awayOwner;
+
+  return <article className="ko-match-card">
+    <div className="ko-match-meta">
+      <span>{match.date ? formatDate(match.date, { compact: true }) : "Datum offen"}</span>
+      <span>{match.time || "--:--"} Uhr</span>
+      <span>{statusLabel(match.status)}</span>
+    </div>
+    <div className="ko-match-grid">
+      <KnockoutTeamBlock team={match.homeTeam} />
+      <div className="ko-score-center">
+        <strong>{hasScore ? `${hg}:${ag}` : "vs"}</strong>
+      </div>
+      <KnockoutTeamBlock team={match.awayTeam} align="right" />
+    </div>
+    {hasOwners && <div className="ko-owner-row">
+      {homeOwner && <InfoPill label={homeOwner} value={DE[match.homeTeam] || match.homeTeam} color={COLORS[homeOwner]} />}
+      {awayOwner && awayOwner !== homeOwner && <InfoPill label={awayOwner} value={DE[match.awayTeam] || match.awayTeam} color={COLORS[awayOwner]} />}
+    </div>}
+  </article>;
+}
+
+function KnockoutPanel({ knockout = [] }) {
+  const [openRounds, setOpenRounds] = useState(() => new Set(["LAST_32"]));
+  const matchesByStage = (Array.isArray(knockout) ? knockout : []).reduce((acc, match) => {
+    const stage = match.stage || "UNKNOWN";
+    acc[stage] ||= [];
+    acc[stage].push(match);
+    return acc;
+  }, {});
+  const availableRounds = KNOCKOUT_ROUNDS
+    .map(round => ({ ...round, matches: (matchesByStage[round.id] || []).sort(matchSortAsc) }))
+    .filter(round => round.matches.length > 0);
+
+  if (!availableRounds.length) {
+    return <EmptyState title="Noch keine K.o.-Spiele" text="Sobald football-data.org die K.o.-Phase liefert, erscheint hier der Turnierbaum." />;
+  }
+
+  const allOpen = availableRounds.every(round => openRounds.has(round.id));
+  const toggleRound = stage => setOpenRounds(prev => {
+    const next = new Set(prev);
+    if (next.has(stage)) next.delete(stage); else next.add(stage);
+    return next;
+  });
+  const toggleAll = () => setOpenRounds(allOpen ? new Set() : new Set(availableRounds.map(round => round.id)));
+
+  return <div className="card-stack ko-panel">
+    <div className="hint-box">Die K.o.-Termine sind schon da. Teams erscheinen automatisch, sobald sie nach der Gruppenphase feststehen.</div>
+    <button className="group-toggle-all" onClick={toggleAll}>{allOpen ? "Alle zuklappen ▲" : "Alle aufklappen ▼"}</button>
+    {availableRounds.map(round => {
+      const isOpen = openRounds.has(round.id);
+      const knownTeams = round.matches.reduce((count, match) => count + (match.homeTeam ? 1 : 0) + (match.awayTeam ? 1 : 0), 0);
+      return <section className={`ko-round-section${isOpen ? " open" : ""}`} key={round.id}>
+        <button className="ko-round-header" onClick={() => toggleRound(round.id)}>
+          <span className="ko-round-title">{round.label}</span>
+          <span className="ko-round-meta">{round.matches.length} Spiele · {knownTeams}/{round.matches.length * 2} Teams</span>
+          <span className="group-chevron">{isOpen ? "▲" : "▼"}</span>
+        </button>
+        {isOpen && <div className="ko-round-body">
+          {round.matches.map(match => <KnockoutCard key={match.id} match={match} />)}
+        </div>}
+      </section>;
+    })}
+  </div>;
+}
+
+function GamesPanel({ subTab, upcomingByDate, played, live, upcoming, knockout, standings }) {
   if (subTab === "ergebnisse") {
     return <div className="card-stack">{played.length === 0 ? <EmptyState title="Noch keine Ergebnisse" text="Beendete Spiele erscheinen hier automatisch." /> : played.map((m, i) => <ScoreCard key={`played-${m.id || i}`} match={m} />)}</div>;
   }
   if (subTab === "gruppen") {
     return <GroupsPanel live={live} played={played} upcoming={upcoming} />;
+  }
+  if (subTab === "ko") {
+    return <KnockoutPanel knockout={knockout} />;
   }
   const dates = Object.keys(upcomingByDate);
   return <div className="card-stack">
@@ -923,7 +1017,7 @@ function TeamModal({ team, onClose, played, live, upcoming }) {
 
 export default function App() {
   const {
-    live, played, upcoming,
+    live, played, upcoming, knockout,
     loading, error, updated, secondsLeft,
     expandedMatchId,
     matchCenters, matchCenterLoading, matchCenterErrors, cachedMatchCenters,
@@ -967,7 +1061,7 @@ export default function App() {
       ? <ProjectionPanel live={live} liveProjectionStandings={liveProjectionStandings} officialRanks={officialRanks} openPerson={openPerson} setOpenPerson={setOpenPerson} />
       : <LivePanel live={live} expandedMatchId={expandedMatchId} openMatchCenter={openMatchCenter} matchCenters={matchCenters} matchCenterLoading={matchCenterLoading} matchCenterErrors={matchCenterErrors} cachedMatchCenters={cachedMatchCenters} />;
   } else if (tab === "spiele") {
-    screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} upcoming={upcoming} standings={standings} />;
+    screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} upcoming={upcoming} knockout={knockout} standings={standings} />;
   } else if (tab === "stats") {
     screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} standings={standings} teamStats={teamStats} live={live} played={played} upcoming={upcoming} />;
   } else if (tab === "mein") {
