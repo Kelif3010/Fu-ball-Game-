@@ -250,7 +250,81 @@ function ScoreCard({ match, live = false, onClick = null, selected = false, comp
   </article>;
 }
 
-function MatchImpactPanel({ match }) {
+function buildScenarioStandings(standings, match, pointsByPerson) {
+  const updated = standings.map(row => {
+    const added = pointsByPerson[row.person] || 0;
+    return added ? { ...row, pts: row.pts + added } : { ...row };
+  });
+  return updated.sort(compareStandingRows);
+}
+
+function buildUpcomingScenarios(match, standings) {
+  const homeOwner = ownerOf(match.homeTeam);
+  const awayOwner = ownerOf(match.awayTeam);
+  const currentRanks = rankMap(standings);
+  const sameOwner = homeOwner && homeOwner === awayOwner;
+  const directOwners = [...new Set([homeOwner, awayOwner].filter(Boolean))];
+  const scenarios = [
+    {
+      id: "home",
+      label: `${DE[match.homeTeam] || match.homeTeam}-Sieg`,
+      points: homeOwner ? { [homeOwner]: 3 } : {},
+      blocked: awayOwner && awayOwner !== homeOwner ? [awayOwner] : [],
+    },
+    {
+      id: "draw",
+      label: "Remis",
+      points: sameOwner
+        ? { [homeOwner]: 2 }
+        : Object.fromEntries([[homeOwner, 1], [awayOwner, 1]].filter(([person]) => person)),
+      blocked: directOwners,
+    },
+    {
+      id: "away",
+      label: `${DE[match.awayTeam] || match.awayTeam}-Sieg`,
+      points: awayOwner ? { [awayOwner]: 3 } : {},
+      blocked: homeOwner && homeOwner !== awayOwner ? [homeOwner] : [],
+    },
+  ];
+
+  return scenarios.map(scenario => {
+    const projected = buildScenarioStandings(standings, match, scenario.points);
+    const projectedRanks = rankMap(projected);
+    const rankGainers = standings
+      .filter(row => !directOwners.includes(row.person))
+      .map(row => {
+        const oldRank = currentRanks[row.person]?.rank || 999;
+        const newRank = projectedRanks[row.person]?.rank || oldRank;
+        return { person: row.person, oldRank, newRank };
+      })
+      .filter(item => item.newRank < item.oldRank)
+      .sort((a, b) => a.newRank - b.newRank);
+
+    const closeBeneficiaries = scenario.blocked.flatMap(blockedPerson => {
+      const blockedMeta = currentRanks[blockedPerson];
+      if (!blockedMeta) return [];
+      return standings
+        .filter(row => !directOwners.includes(row.person))
+        .filter(row => {
+          const rowRank = currentRanks[row.person]?.rank || 999;
+          const pointsGap = blockedMeta.row.pts - row.pts;
+          return rowRank > blockedMeta.rank && pointsGap >= 0 && pointsGap <= 3;
+        })
+        .map(row => ({ person: row.person, blockedPerson }));
+    });
+
+    const seen = new Set(rankGainers.map(item => item.person));
+    const indirect = closeBeneficiaries.filter(item => {
+      if (seen.has(item.person)) return false;
+      seen.add(item.person);
+      return true;
+    });
+
+    return { ...scenario, rankGainers, indirect };
+  });
+}
+
+function MatchImpactPanel({ match, standings }) {
   const [open, setOpen] = useState(false);
   const homeOwner = ownerOf(match.homeTeam);
   const awayOwner = ownerOf(match.awayTeam);
@@ -261,6 +335,7 @@ function MatchImpactPanel({ match }) {
     : homeOwner && awayOwner
       ? `Direktes Duell: ${homeOwner} vs ${awayOwner}`
       : `${homeOwner || awayOwner} kann punkten`;
+  const scenarios = buildUpcomingScenarios(match, standings);
 
   return <div className={`match-impact-panel${open ? " open" : ""}`}>
     <button className="match-impact-toggle" onClick={() => setOpen(!open)}>
@@ -268,35 +343,35 @@ function MatchImpactPanel({ match }) {
       <strong>{open ? "▲" : "▼"}</strong>
     </button>
     {open && <div className="match-impact-body">
-      {sameOwner ? (
-        <>
-          <p>Jedes Ergebnis bringt Punkte für {homeOwner}, weil beide Teams ihm gehören.</p>
-          <div className="impact-option-grid">
-            <InfoPill label={`${DE[match.homeTeam] || match.homeTeam}-Sieg`} value={`+3 ${homeOwner}`} color={COLORS[homeOwner]} />
-            <InfoPill label="Remis" value={`+2 ${homeOwner}`} color={COLORS[homeOwner]} />
-            <InfoPill label={`${DE[match.awayTeam] || match.awayTeam}-Sieg`} value={`+3 ${homeOwner}`} color={COLORS[homeOwner]} />
-          </div>
-        </>
-      ) : (
-        <>
-          {homeOwner && <p>{homeOwner} profitiert von einem Sieg von {displayTeamName(match.homeTeam)}.</p>}
-          {awayOwner && <p>{awayOwner} profitiert von einem Sieg von {displayTeamName(match.awayTeam)}.</p>}
-          {homeOwner && awayOwner && <p>Ein Remis bringt beiden jeweils 1 Punkt.</p>}
-          <div className="impact-option-grid">
-            {homeOwner && <InfoPill label={`${DE[match.homeTeam] || match.homeTeam}-Sieg`} value={`+3 ${homeOwner}`} color={COLORS[homeOwner]} />}
-            {homeOwner && awayOwner && <InfoPill label="Remis" value={`+1 / +1`} />}
-            {awayOwner && <InfoPill label={`${DE[match.awayTeam] || match.awayTeam}-Sieg`} value={`+3 ${awayOwner}`} color={COLORS[awayOwner]} />}
-          </div>
-        </>
-      )}
+      <p>Auswirkung auf eure Tabelle, wenn dieses Ergebnis so kommt.</p>
+      <div className="impact-scenario-list">
+        {scenarios.map(scenario => {
+          const pointText = Object.entries(scenario.points)
+            .map(([person, pts]) => `${person} +${pts}`)
+            .join(" · ");
+          return <article className="impact-scenario" key={scenario.id}>
+            <div className="impact-scenario-head">
+              <strong>{scenario.label}</strong>
+              {pointText && <span>{pointText}</span>}
+            </div>
+            {scenario.rankGainers.length > 0 ? (
+              <p>{scenario.rankGainers.map(item => `${item.person} steigt auf Platz ${item.newRank}`).join(" · ")}</p>
+            ) : scenario.indirect.length > 0 ? (
+              <p>Gut für {scenario.indirect.map(item => item.person).join(", ")}, weil {scenario.indirect.map(item => item.blockedPerson).filter((person, index, arr) => arr.indexOf(person) === index).join(" und ")} Punkte liegen lässt.</p>
+            ) : (
+              <p>Kein direkter Platzgewinn für andere Spieler.</p>
+            )}
+          </article>;
+        })}
+      </div>
     </div>}
   </div>;
 }
 
-function UpcomingCard({ match }) {
+function UpcomingCard({ match, standings }) {
   return <div className="upcoming-match-item">
     <ScoreCard match={match} compact />
-    <MatchImpactPanel match={match} />
+    <MatchImpactPanel match={match} standings={standings} />
   </div>;
 }
 
@@ -440,7 +515,7 @@ function GroupsPanel({ live, played, upcoming }) {
   </div>;
 }
 
-function GamesPanel({ subTab, upcomingByDate, played, live, upcoming }) {
+function GamesPanel({ subTab, upcomingByDate, played, live, upcoming, standings }) {
   if (subTab === "ergebnisse") {
     return <div className="card-stack">{played.length === 0 ? <EmptyState title="Noch keine Ergebnisse" text="Beendete Spiele erscheinen hier automatisch." /> : played.map((m, i) => <ScoreCard key={`played-${m.id || i}`} match={m} />)}</div>;
   }
@@ -451,7 +526,7 @@ function GamesPanel({ subTab, upcomingByDate, played, live, upcoming }) {
   return <div className="card-stack">
     {live.length > 0 && <section className="section-block"><h2>🔴 Läuft gerade</h2><div className="card-stack slim">{live.map((m, i) => <ScoreCard key={`upcoming-live-${m.id || i}`} match={m} live compact />)}</div></section>}
     {dates.length === 0 && <EmptyState title="Keine kommenden Spiele" text="Sobald die API kommende Gruppenspiele liefert, landen sie hier." />}
-    {dates.map(date => <section className="section-block" key={date}><h2>{formatDate(date)}</h2>{upcomingByDate[date].map((match, index) => <UpcomingCard key={`${date}-${match.id || index}`} match={match} />)}</section>)}
+    {dates.map(date => <section className="section-block" key={date}><h2>{formatDate(date)}</h2>{upcomingByDate[date].map((match, index) => <UpcomingCard key={`${date}-${match.id || index}`} match={match} standings={standings} />)}</section>)}
   </div>;
 }
 
@@ -892,7 +967,7 @@ export default function App() {
       ? <ProjectionPanel live={live} liveProjectionStandings={liveProjectionStandings} officialRanks={officialRanks} openPerson={openPerson} setOpenPerson={setOpenPerson} />
       : <LivePanel live={live} expandedMatchId={expandedMatchId} openMatchCenter={openMatchCenter} matchCenters={matchCenters} matchCenterLoading={matchCenterLoading} matchCenterErrors={matchCenterErrors} cachedMatchCenters={cachedMatchCenters} />;
   } else if (tab === "spiele") {
-    screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} upcoming={upcoming} />;
+    screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} upcoming={upcoming} standings={standings} />;
   } else if (tab === "stats") {
     screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} standings={standings} teamStats={teamStats} live={live} played={played} upcoming={upcoming} />;
   } else if (tab === "mein") {
