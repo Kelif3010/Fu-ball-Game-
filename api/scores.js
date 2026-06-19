@@ -179,6 +179,24 @@ function toUpcomingMatch({ id, homeTeam, awayTeam, date, time, group, stage, sta
   return { id, homeTeam, awayTeam, date, time, group, stage, status };
 }
 
+function transformScorer(row, index) {
+  const team = getTeamName(row?.team);
+  const player = row?.player || {};
+  return {
+    id: player.id ?? `${player.name || "player"}-${team || index}`,
+    name: player.name || "Unbekannt",
+    firstName: player.firstName || "",
+    lastName: player.lastName || "",
+    nationality: player.nationality || "",
+    position: player.section || player.position || "",
+    shirtNumber: player.shirtNumber ?? null,
+    team,
+    goals: pickNumber(row?.goals) ?? 0,
+    assists: pickNumber(row?.assists),
+    penalties: pickNumber(row?.penalties),
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -192,11 +210,15 @@ export default async function handler(req, res) {
 
   const url = new URL("https://api.football-data.org/v4/competitions/WC/matches");
   url.searchParams.set("season", "2026");
+  const scorersUrl = new URL("https://api.football-data.org/v4/competitions/WC/scorers");
+  scorersUrl.searchParams.set("season", "2026");
 
   try {
-    const fdRes = await fetch(url, {
-      headers: { "X-Auth-Token": token, "Accept": "application/json" },
-    });
+    const headers = { "X-Auth-Token": token, "Accept": "application/json" };
+    const [fdRes, scorersRes] = await Promise.all([
+      fetch(url, { headers }),
+      fetch(scorersUrl, { headers }).catch(error => ({ ok: false, status: 0, scorerError: error })),
+    ]);
     const data = await fdRes.json().catch(() => null);
     if (!fdRes.ok) {
       return res.status(fdRes.status).json({
@@ -204,6 +226,10 @@ export default async function handler(req, res) {
         details: data || null,
       });
     }
+    const scorersData = scorersRes.ok ? await scorersRes.json().catch(() => null) : null;
+    const scorers = Array.isArray(scorersData?.scorers)
+      ? scorersData.scorers.map(transformScorer).filter(row => row.name && row.team)
+      : [];
 
     const matches = Array.isArray(data?.matches) ? data.matches : [];
     const transformed = matches.map(transformMatch);
@@ -239,6 +265,7 @@ export default async function handler(req, res) {
       played,
       upcoming,
       knockout,
+      scorers,
     });
   } catch (error) {
     return res.status(500).json({ error: error?.message || "Unbekannter Serverfehler beim Abrufen der Fußball-Daten." });

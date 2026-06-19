@@ -32,6 +32,7 @@ const SUB_TABS = {
     { id: "form", label: "Form" },
     { id: "h2h", label: "Head-to-Head" },
     { id: "gruppendritte", label: "Gruppendritte" },
+    { id: "tore", label: "Torschützen" },
   ],
 };
 
@@ -139,7 +140,7 @@ function BottomNav({ active, onChange, liveCount }) {
 function SubTabs({ activeTab, activeSubTab, onChange, liveCount }) {
   const items = SUB_TABS[activeTab];
   if (!items) return null;
-  return <nav className="sub-tabs" aria-label="Untermenü">
+  return <nav className={`sub-tabs ${items.length > 4 ? "scrollable" : ""}`} aria-label="Untermenü">
     {items.map(item => <button key={item.id} className={activeSubTab === item.id ? "active" : ""} onClick={() => onChange(item.id)}>
       {item.label}{item.id === "laufend" && liveCount > 0 ? <span>{liveCount}</span> : null}
     </button>)}
@@ -624,11 +625,65 @@ function GamesPanel({ subTab, upcomingByDate, played, live, upcoming, knockout, 
   </div>;
 }
 
-function StatsPanel({ subTab, maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson, standings, teamStats, live, played, upcoming }) {
+function StatsPanel({ subTab, maxPossibleRows, formRows, h2hStats, selectedPerson, setSelectedPerson, standings, teamStats, live, played, upcoming, scorers }) {
   if (subTab === "form") return <StatsFormCard rows={formRows} />;
   if (subTab === "h2h") return <HeadToHead stats={h2hStats} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson} />;
   if (subTab === "gruppendritte") return <GroupThirdsCard live={live} played={played} upcoming={upcoming} />;
+  if (subTab === "tore") return <ScorersCard scorers={scorers} />;
   return <StatsMaxPointsCard rows={maxPossibleRows} />;
+}
+
+function ScorersCard({ scorers = [] }) {
+  const [onlyOwned, setOnlyOwned] = useState(false);
+  const rows = (Array.isArray(scorers) ? scorers : [])
+    .map(row => ({ ...row, owner: ownerOf(row.team) }))
+    .filter(row => !onlyOwned || row.owner)
+    .sort((a, b) =>
+      (b.goals || 0) - (a.goals || 0) ||
+      (b.assists || 0) - (a.assists || 0) ||
+      (a.name || "").localeCompare(b.name || "")
+    );
+  const topGoals = Math.max(1, ...rows.map(row => row.goals || 0));
+
+  if (!scorers.length) {
+    return <EmptyState title="Keine Torschützen-Daten" text="Sobald football-data.org Torschützen liefert, erscheint hier die Liste." />;
+  }
+
+  return <article className="what-card analysis-card stats-card scorers-card">
+    <div className="analysis-head">
+      <div>
+        <h3>Torschützen</h3>
+        <p>Top-Torschützen der WM. Teams aus eurer Liga sind farbig markiert.</p>
+      </div>
+      <span className="analysis-badge">{rows.length}</span>
+    </div>
+    <div className="scorers-toolbar">
+      <button className={onlyOwned ? "active" : ""} onClick={() => setOnlyOwned(!onlyOwned)}>
+        {onlyOwned ? "Alle anzeigen" : "Nur unsere Teams"}
+      </button>
+    </div>
+    <div className="scorers-list">
+      {rows.length === 0 ? <EmptyState title="Keine Treffer" text="Für eure Teams gibt es aktuell noch keine Torschützen in der Liste." compact /> : rows.map((row, index) => {
+        const progress = Math.max(8, Math.round(((row.goals || 0) / topGoals) * 100));
+        return <div className="scorer-row" key={`${row.id}-${row.team}-${index}`} style={{ "--accent": row.owner ? COLORS[row.owner] : "#94a3b8", "--progress": `${progress}%` }}>
+          <span className="scorer-rank">{index + 1}</span>
+          <div className="scorer-main">
+            <strong>{row.name}</strong>
+            <small>{displayTeamName(row.team)}{row.owner ? ` · ${row.owner}` : ""}</small>
+            <div className="scorer-bar"><div /></div>
+          </div>
+          <div className="scorer-goals">
+            <strong>{row.goals || 0}</strong>
+            <small>Tore</small>
+          </div>
+          {(row.penalties || row.assists) && <div className="scorer-extra">
+            {row.penalties ? <span>{row.penalties} Elfer</span> : null}
+            {row.assists ? <span>{row.assists} Assists</span> : null}
+          </div>}
+        </div>;
+      })}
+    </div>
+  </article>;
 }
 
 function StatsMaxPointsCard({ rows }) {
@@ -1017,7 +1072,7 @@ function TeamModal({ team, onClose, played, live, upcoming }) {
 
 export default function App() {
   const {
-    live, played, upcoming, knockout,
+    live, played, upcoming, knockout, scorers,
     loading, error, updated, secondsLeft,
     expandedMatchId,
     matchCenters, matchCenterLoading, matchCenterErrors, cachedMatchCenters,
@@ -1063,7 +1118,7 @@ export default function App() {
   } else if (tab === "spiele") {
     screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} upcoming={upcoming} knockout={knockout} standings={standings} />;
   } else if (tab === "stats") {
-    screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} standings={standings} teamStats={teamStats} live={live} played={played} upcoming={upcoming} />;
+    screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} standings={standings} teamStats={teamStats} live={live} played={played} upcoming={upcoming} scorers={scorers} />;
   } else if (tab === "mein") {
     screen = <MyPanel selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} standings={standings} liveProjectionStandings={liveProjectionStandings} live={live} upcoming={upcoming} played={played} />;
   }
