@@ -119,6 +119,7 @@ function getGroup(match) {
 
 function pickNumber(...values) {
   for (const value of values) {
+    if (value === null || value === undefined) continue;
     if (Number.isInteger(value)) return value;
     const parsed = Number(value);
     if (Number.isInteger(parsed)) return parsed;
