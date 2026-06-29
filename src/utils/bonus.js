@@ -1,4 +1,4 @@
-import { PARTICIPANTS } from "../shared.js";
+import { PARTICIPANTS, FIFA_RANKS } from "../shared.js";
 import { buildGroupData, compareStandingRows, matchSortAsc, ownerOf } from "./standings.js";
 
 const GROUP_BONUS = {
@@ -56,7 +56,7 @@ export function buildBonusRows({ standings, live, played, upcoming, knockout }) 
   const thirds = groupData
     .filter(group => group.standings.length >= 3)
     .map(group => ({ group: group.group, ...group.standings[2] }))
-    .sort((a, b) => b.pts - a.pts || b.td - a.td || b.gf - a.gf || a.team.localeCompare(b.team));
+    .sort((a, b) => b.pts - a.pts || b.td - a.td || b.gf - a.gf || (FIFA_RANKS[a.team] || 999) - (FIFA_RANKS[b.team] || 999));
   const bestThirdTeams = new Set(thirds.slice(0, 8).map(row => row.team));
 
   groupData.forEach(group => {
