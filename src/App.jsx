@@ -38,12 +38,28 @@ const SUB_TABS = {
   ],
 };
 
+const SCORE_STATUSES = new Set(["FINISHED", "IN_PLAY", "LIVE", "PAUSED"]);
+
+function scoreNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function getActualScore(match) {
+  if (!SCORE_STATUSES.has(match?.status)) return null;
+  const hg = scoreNumber(match?.homeGoals);
+  const ag = scoreNumber(match?.awayGoals);
+  if (hg === null || ag === null) return null;
+  return { hg, ag };
+}
+
 function getMatchPointImpact(match) {
   const hOwner = ownerOf(match.homeTeam);
   const aOwner = ownerOf(match.awayTeam);
-  const hg = Number(match.homeGoals);
-  const ag = Number(match.awayGoals);
-  if (!Number.isFinite(hg) || !Number.isFinite(ag)) return [];
+  const score = getActualScore(match);
+  if (!score) return [];
+  const { hg, ag } = score;
   if (hg > ag) return [{ person: hOwner, pts: 3 }, { person: aOwner, pts: 0 }].filter(x => x.person);
   if (ag > hg) return [{ person: hOwner, pts: 0 }, { person: aOwner, pts: 3 }].filter(x => x.person);
   return [{ person: hOwner, pts: 1 }, { person: aOwner, pts: 1 }].filter(x => x.person);
@@ -257,9 +273,8 @@ function LeagueModeToggle({ mode, onChange }) {
 
 function ScoreCard({ match, live = false, onClick = null, selected = false, compact = false }) {
   const clickable = typeof onClick === "function";
-  const hg = Number(match.homeGoals);
-  const ag = Number(match.awayGoals);
-  const hasScore = Number.isFinite(hg) && Number.isFinite(ag);
+  const score = getActualScore(match);
+  const hasScore = Boolean(score);
   const hOwner = ownerOf(match.homeTeam);
   const aOwner = ownerOf(match.awayTeam);
   const isDuel = hOwner && aOwner && hOwner !== aOwner;
@@ -274,7 +289,7 @@ function ScoreCard({ match, live = false, onClick = null, selected = false, comp
       <TeamBlock team={match.homeTeam} />
       <div className="score-center">
         <div className="status-pill">{live && <span />} {statusLabel(match.status)}</div>
-        <strong>{hasScore ? `${hg}:${ag}` : (match.time || "vs")}</strong>
+        <strong>{hasScore ? `${score.hg}:${score.ag}` : (match.time || "vs")}</strong>
         {(match.minute || (!hasScore && match.time)) && <small>{match.minute ? `${match.minute}'` : "Uhr"}</small>}
         {!live && match.date && <em>{formatDate(match.date, { compact: true })}</em>}
         {clickable && <b>{selected ? "Match-Center offen" : "Tippen"}</b>}
@@ -560,9 +575,8 @@ function KnockoutTeamBlock({ team, align = "left" }) {
 }
 
 function KnockoutCard({ match }) {
-  const hg = Number(match.homeGoals);
-  const ag = Number(match.awayGoals);
-  const hasScore = Number.isFinite(hg) && Number.isFinite(ag);
+  const score = getActualScore(match);
+  const hasScore = Boolean(score);
   const homeOwner = ownerOf(match.homeTeam);
   const awayOwner = ownerOf(match.awayTeam);
   const hasOwners = homeOwner || awayOwner;
@@ -576,7 +590,7 @@ function KnockoutCard({ match }) {
     <div className="ko-match-grid">
       <KnockoutTeamBlock team={match.homeTeam} />
       <div className="ko-score-center">
-        <strong>{hasScore ? `${hg}:${ag}` : "vs"}</strong>
+        <strong>{hasScore ? `${score.hg}:${score.ag}` : "vs"}</strong>
       </div>
       <KnockoutTeamBlock team={match.awayTeam} align="right" />
     </div>
@@ -890,7 +904,7 @@ function PersonSelector({ selected, onSelect }) {
 function PersonTeamsPanel({ person, played, live, upcoming }) {
   const [openTeam, setOpenTeam] = useState("");
   const allMatches = [...played, ...live, ...upcoming];
-  const finishedMatches = [...played, ...live.filter(match => Number.isFinite(Number(match.homeGoals)) && Number.isFinite(Number(match.awayGoals)))];
+  const finishedMatches = [...played, ...live.filter(match => getActualScore(match))];
   const teamStats = buildTeamStats(finishedMatches);
   const groupData = buildGroupData(live, played, upcoming);
   const groupByTeam = {};
@@ -1093,7 +1107,7 @@ function formatNeedLine(item) {
 
 function TeamModal({ team, onClose, played, live, upcoming }) {
   const owner = ownerOf(team);
-  const allFinished = [...played, ...live.filter(m => Number.isFinite(Number(m.homeGoals)) && Number.isFinite(Number(m.awayGoals)))];
+  const allFinished = [...played, ...live.filter(m => getActualScore(m))];
   const stats = buildTeamStats(allFinished)[team] || { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, pts: 0 };
   const td = stats.gf - stats.ga;
   const teamMatches = [...played, ...live, ...upcoming]

@@ -152,19 +152,21 @@ function transformMatch(match) {
   const awayTeam = getTeamName(match.awayTeam);
   const { date, time } = getBerlinDateAndTime(match.utcDate);
   const score = match.score || {};
+  const hasResultStatus = match.status === "FINISHED" || LIVE_STATUSES.has(match.status);
 
   return {
     id: match.id,
     homeTeam,
     awayTeam,
-    homeGoals: pickNumber(score.fullTime?.home, score.regularTime?.home, score.home),
-    awayGoals: pickNumber(score.fullTime?.away, score.regularTime?.away, score.away),
+    homeGoals: hasResultStatus ? pickNumber(score.fullTime?.home, score.regularTime?.home, score.home) : null,
+    awayGoals: hasResultStatus ? pickNumber(score.fullTime?.away, score.regularTime?.away, score.away) : null,
     date,
     time,
     group: getGroup(match),
     stage: match.stage || "",
     status: match.status || "",
     minute: estimateLiveMinute(match),
+    winner: score.winner || "",
   };
 }
 
@@ -172,8 +174,8 @@ function isKnownSelectedMatch(m) {
   return ALL_TEAMS.has(m.homeTeam) && ALL_TEAMS.has(m.awayTeam);
 }
 
-function toScoreMatch({ id, homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, stage, status, minute }) {
-  return { id, homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, stage, status, minute };
+function toScoreMatch({ id, homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, stage, status, minute, winner }) {
+  return { id, homeTeam, awayTeam, homeGoals, awayGoals, date, time, group, stage, status, minute, winner };
 }
 
 function toUpcomingMatch({ id, homeTeam, awayTeam, date, time, group, stage, status }) {

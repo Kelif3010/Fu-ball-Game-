@@ -15,16 +15,33 @@ const KNOCKOUT_BONUS = {
   FINAL: 5,
 };
 
+const KNOCKOUT_STAGE_ORDER = ["LAST_32", "LAST_16", "QUARTER_FINALS", "SEMI_FINALS", "FINAL"];
+const KNOCKOUT_STAGE_LABELS = {
+  LAST_32: "Sechzehntelfinale erreicht",
+  LAST_16: "Achtelfinale erreicht",
+  QUARTER_FINALS: "Viertelfinale erreicht",
+  SEMI_FINALS: "Halbfinale erreicht",
+  FINAL: "Finale erreicht",
+};
+
 const WORLD_CHAMPION_BONUS = 3;
 
 function teamLabel(team) {
   return team || "Team";
 }
 
+function scoreNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function winnerOf(match) {
-  const hg = Number(match?.homeGoals);
-  const ag = Number(match?.awayGoals);
-  if (!Number.isFinite(hg) || !Number.isFinite(ag)) return "";
+  if (match?.winner === "HOME_TEAM") return match.homeTeam || "";
+  if (match?.winner === "AWAY_TEAM") return match.awayTeam || "";
+  const hg = scoreNumber(match?.homeGoals);
+  const ag = scoreNumber(match?.awayGoals);
+  if (hg === null || ag === null) return "";
   if (hg > ag) return match.homeTeam || "";
   if (ag > hg) return match.awayTeam || "";
   return "";
@@ -86,25 +103,31 @@ export function buildBonusRows({ standings, live, played, upcoming, knockout }) 
     });
   });
 
-  const koByTeam = {};
+  const koStagesByTeam = {};
   (Array.isArray(knockout) ? [...knockout].sort(matchSortAsc) : []).forEach(match => {
     const stagePoints = KNOCKOUT_BONUS[match.stage] || 0;
     if (!stagePoints) return;
     [match.homeTeam, match.awayTeam].filter(Boolean).forEach(team => {
-      koByTeam[team] = Math.max(koByTeam[team] || 0, stagePoints);
+      koStagesByTeam[team] ||= new Set();
+      koStagesByTeam[team].add(match.stage);
     });
   });
 
-  Object.entries(koByTeam).forEach(([team, points]) => {
+  Object.entries(koStagesByTeam).forEach(([team, stages]) => {
     const owner = ownerOf(team);
     if (!owner || !rowsByPerson[owner]) return;
-    rowsByPerson[owner].knockoutBonus += points;
-    rowsByPerson[owner].bonusDetails.push({
-      type: "knockout",
-      team,
-      points,
-      label: `${teamLabel(team)} erreicht K.o.-Runde`,
-    });
+    KNOCKOUT_STAGE_ORDER
+      .filter(stage => stages.has(stage))
+      .forEach(stage => {
+        const points = KNOCKOUT_BONUS[stage] || 0;
+        rowsByPerson[owner].knockoutBonus += points;
+        rowsByPerson[owner].bonusDetails.push({
+          type: "knockout",
+          team,
+          points,
+          label: `${teamLabel(team)}: ${KNOCKOUT_STAGE_LABELS[stage] || "K.o.-Runde erreicht"}`,
+        });
+      });
   });
 
   const finalMatch = (Array.isArray(knockout) ? knockout : []).find(match => match.stage === "FINAL");

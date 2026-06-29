@@ -4,6 +4,19 @@ const ALL_TEAMS = new Set(Object.values(PARTICIPANTS).flat());
 
 export const ownerOf = team => Object.entries(PARTICIPANTS).find(([, teams]) => teams.includes(team))?.[0] || "";
 
+function scoreNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function matchScore(match) {
+  const hg = scoreNumber(match?.homeGoals);
+  const ag = scoreNumber(match?.awayGoals);
+  if (hg === null || ag === null) return null;
+  return { hg, ag };
+}
+
 export function matchSortAsc(a, b) {
   return `${a.date || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999-99-99"} ${b.time || "99:99"}`);
 }
@@ -19,9 +32,9 @@ export function buildTeamStats(matches) {
     const h = match.homeTeam;
     const a = match.awayTeam;
     if (!stats[h] || !stats[a]) continue;
-    const hg = Number(match.homeGoals);
-    const ag = Number(match.awayGoals);
-    if (!Number.isFinite(hg) || !Number.isFinite(ag)) continue;
+    const score = matchScore(match);
+    if (!score) continue;
+    const { hg, ag } = score;
     stats[h].played++; stats[a].played++;
     stats[h].gf += hg; stats[h].ga += ag; stats[a].gf += ag; stats[a].ga += hg;
     if (hg > ag) { stats[h].pts += 3; stats[h].won++; stats[a].lost++; }
@@ -78,10 +91,11 @@ export function buildHeadToHeadStats(playedMatches) {
       };
     }
 
+    const score = matchScore(match);
+    if (!score) return;
+    const { hg, ag } = score;
     const stats = pairings[key];
     stats.matches++;
-    const hg = Number(match.homeGoals);
-    const ag = Number(match.awayGoals);
 
     if (hOwner === stats.p1) {
       stats.p1Goals += hg;
@@ -121,9 +135,9 @@ export function buildPointsTimeline(played) {
     for (const match of dayMatches) {
       const hOwner = ownerOf(match.homeTeam);
       const aOwner = ownerOf(match.awayTeam);
-      const hg = Number(match.homeGoals);
-      const ag = Number(match.awayGoals);
-      if (!Number.isFinite(hg) || !Number.isFinite(ag)) continue;
+      const score = matchScore(match);
+      if (!score) continue;
+      const { hg, ag } = score;
       if (hg > ag) { if (hOwner) running[hOwner] += 3; }
       else if (ag > hg) { if (aOwner) running[aOwner] += 3; }
       else { if (hOwner) running[hOwner]++; if (aOwner) running[aOwner]++; }
@@ -139,12 +153,12 @@ export function getLastResultsForPerson(person, played, limit = 5) {
     .filter(match => ownerOf(match.homeTeam) === person || ownerOf(match.awayTeam) === person)
     .slice(0, limit)
     .map(match => {
-      const hg = Number(match.homeGoals);
-      const ag = Number(match.awayGoals);
+      const score = matchScore(match);
       const homeOwner = ownerOf(match.homeTeam);
       const awayOwner = ownerOf(match.awayTeam);
       let emoji = "🤝";
-      if (Number.isFinite(hg) && Number.isFinite(ag)) {
+      if (score) {
+        const { hg, ag } = score;
         if (hg > ag) emoji = homeOwner === person ? "✅" : "❌";
         else if (ag > hg) emoji = awayOwner === person ? "✅" : "❌";
       }
@@ -381,7 +395,7 @@ export function buildGroupData(live, played, upcoming) {
     groups[m.group].teams.add(m.awayTeam);
     groups[m.group].matches.push(m);
   }
-  const finishedMatches = [...played, ...live.filter(m => Number.isFinite(Number(m.homeGoals)))];
+  const finishedMatches = [...played, ...live.filter(m => matchScore(m))];
   const allTeamStats = buildTeamStats(finishedMatches);
   return Object.entries(groups)
     .sort(([a], [b]) => a.localeCompare(b))
