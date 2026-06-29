@@ -1536,10 +1536,17 @@ body {
 }
 
 .bonus-row-head {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto 18px;
   align-items: center;
   gap: 9px;
+  cursor: pointer;
 }
 
 .bonus-rank {
@@ -1579,6 +1586,13 @@ body {
 .bonus-total strong {
   color: var(--accent);
   font-size: 24px;
+}
+
+.bonus-chevron {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 950;
+  text-align: right;
 }
 
 .bonus-breakdown {

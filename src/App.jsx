@@ -29,12 +29,12 @@ const SUB_TABS = {
     { id: "ko", label: "K.o." },
   ],
   stats: [
+    { id: "bonus", label: "Bonus" },
     { id: "max", label: "Max Punkte" },
     { id: "form", label: "Form" },
     { id: "h2h", label: "Head-to-Head" },
     { id: "gruppendritte", label: "Gruppendritte" },
     { id: "tore", label: "Torschützen" },
-    { id: "bonus", label: "Bonus" },
   ],
 };
 
@@ -673,6 +673,7 @@ function StatsPanel({ subTab, maxPossibleRows, formRows, h2hStats, selectedPerso
 }
 
 function BonusCard({ rows = [] }) {
+  const [openPerson, setOpenPerson] = useState("");
   if (!rows.length) return <EmptyState title="Keine Bonusdaten" text="Sobald Gruppen- oder K.o.-Daten geladen sind, erscheint hier die Bonuswertung." />;
   return <div className="card-stack">
     <article className="what-card analysis-card bonus-rules-card">
@@ -700,8 +701,10 @@ function BonusCard({ rows = [] }) {
         <span className="analysis-badge">{rows.length}</span>
       </div>
       <div className="bonus-list">
-        {rows.map((row, index) => <article className="bonus-row" key={row.person} style={{ "--accent": COLORS[row.person] }}>
-          <div className="bonus-row-head">
+        {rows.map((row, index) => {
+          const isOpen = openPerson === row.person;
+          return <article className={`bonus-row${isOpen ? " open" : ""}`} key={row.person} style={{ "--accent": COLORS[row.person] }}>
+          <button className="bonus-row-head" onClick={() => setOpenPerson(isOpen ? "" : row.person)}>
             <span className="bonus-rank">{index + 1}</span>
             <div>
               <strong>{row.person}</strong>
@@ -711,24 +714,29 @@ function BonusCard({ rows = [] }) {
               <strong>{row.totalPts}</strong>
               <small>Gesamt</small>
             </div>
-          </div>
-          <div className="bonus-breakdown">
-            <InfoPill label="Gruppe" value={`+${row.groupBonus || 0}`} color="#fbbf24" />
-            <InfoPill label="K.o." value={`+${row.knockoutBonus || 0}`} color="#38bdf8" />
-            <InfoPill label="WM" value={`+${row.championBonus || 0}`} color="#34d399" />
-          </div>
-          <div className="bonus-details">
-            {row.bonusDetails.length === 0
-              ? <p>Noch keine Bonuspunkte.</p>
-              : row.bonusDetails.map((detail, detailIndex) => (
-                <div key={`${row.person}-${detail.team}-${detail.type}-${detailIndex}`}>
-                  <span>{displayTeamName(detail.team)}</span>
-                  <strong>+{detail.points}</strong>
-                  <small>{detail.label}</small>
-                </div>
-              ))}
-          </div>
-        </article>)}
+            <span className="bonus-chevron">{isOpen ? "▲" : "▼"}</span>
+          </button>
+          {isOpen && <>
+            <div className="bonus-breakdown">
+              <InfoPill label="Normal" value={row.normalPts} />
+              <InfoPill label="Gruppe" value={`+${row.groupBonus || 0}`} color="#fbbf24" />
+              <InfoPill label="K.o." value={`+${row.knockoutBonus || 0}`} color="#38bdf8" />
+              <InfoPill label="WM" value={`+${row.championBonus || 0}`} color="#34d399" />
+            </div>
+            <div className="bonus-details">
+              {row.bonusDetails.length === 0
+                ? <p>Noch keine Bonuspunkte.</p>
+                : row.bonusDetails.map((detail, detailIndex) => (
+                  <div key={`${row.person}-${detail.team}-${detail.type}-${detailIndex}`}>
+                    <span>{displayTeamName(detail.team)}</span>
+                    <strong>+{detail.points}</strong>
+                    <small>{detail.label}</small>
+                  </div>
+                ))}
+            </div>
+          </>}
+        </article>;
+        })}
       </div>
     </article>
   </div>;
