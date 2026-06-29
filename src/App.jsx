@@ -269,7 +269,7 @@ function ScoreCard({ match, live = false, onClick = null, selected = false, comp
     if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); }
   };
   return <article className={`match-card ${live ? "live" : ""} ${selected ? "selected" : ""} ${compact ? "compact" : ""}`} onClick={onClick || undefined} onKeyDown={handleKeyDown} role={clickable ? "button" : undefined} tabIndex={clickable ? 0 : undefined}>
-    {match.group && !compact && <div className="match-group-label">Gruppe {match.group}</div>}
+    {(match.group || match.stage) && !compact && <div className="match-group-label">{match.group ? `Gruppe ${match.group}` : (KNOCKOUT_ROUNDS.find(r => r.id === match.stage)?.label || match.stage)}</div>}
     <div className="match-grid">
       <TeamBlock team={match.homeTeam} />
       <div className="score-center">
@@ -644,7 +644,7 @@ function GamesPanel({ subTab, upcomingByDate, played, live, upcoming, knockout, 
   const dates = Object.keys(upcomingByDate);
   return <div className="card-stack">
     {live.length > 0 && <section className="section-block"><h2>🔴 Läuft gerade</h2><div className="card-stack slim">{live.map((m, i) => <ScoreCard key={`upcoming-live-${m.id || i}`} match={m} live compact />)}</div></section>}
-    {dates.length === 0 && <EmptyState title="Keine kommenden Spiele" text="Sobald die API kommende Gruppenspiele liefert, landen sie hier." />}
+    {dates.length === 0 && <EmptyState title="Keine kommenden Spiele" text="Sobald die API kommende Spiele liefert, landen sie hier." />}
     {dates.map(date => <section className="section-block" key={date}><h2>{formatDate(date)}</h2>{upcomingByDate[date].map((match, index) => <UpcomingCard key={`${date}-${match.id || index}`} match={match} standings={standings} />)}</section>)}
   </div>;
 }

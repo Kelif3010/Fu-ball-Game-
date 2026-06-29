@@ -234,22 +234,24 @@ export default async function handler(req, res) {
     const matches = Array.isArray(data?.matches) ? data.matches : [];
     const transformed = matches.map(transformMatch);
     const selectedGroupMatches = transformed.filter(m => m.stage === "GROUP_STAGE").filter(isKnownSelectedMatch);
-    const knockout = transformed
-      .filter(m => m.stage && m.stage !== "GROUP_STAGE")
+    const knockoutMatches = transformed.filter(m => m.stage && m.stage !== "GROUP_STAGE");
+    const knockout = knockoutMatches
       .map(toScoreMatch)
       .sort((a, b) => `${a.date || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999-99-99"} ${b.time || "99:99"}`));
 
-    const live = selectedGroupMatches
+    const allRelevantMatches = [...selectedGroupMatches, ...knockoutMatches];
+
+    const live = allRelevantMatches
       .filter(m => LIVE_STATUSES.has(m.status) && Number.isInteger(m.homeGoals) && Number.isInteger(m.awayGoals))
       .map(toScoreMatch)
       .sort((a, b) => `${a.date || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999-99-99"} ${b.time || "99:99"}`));
 
-    const played = selectedGroupMatches
+    const played = allRelevantMatches
       .filter(m => m.status === "FINISHED" && Number.isInteger(m.homeGoals) && Number.isInteger(m.awayGoals))
       .map(toScoreMatch)
       .sort((a, b) => `${b.date || "0000-00-00"} ${b.time || "00:00"}`.localeCompare(`${a.date || "0000-00-00"} ${a.time || "00:00"}`));
 
-    const upcoming = selectedGroupMatches
+    const upcoming = allRelevantMatches
       .filter(m => m.status !== "FINISHED" && !LIVE_STATUSES.has(m.status) && !BLOCKED_STATUSES.has(m.status))
       .map(toUpcomingMatch)
       .sort((a, b) => `${a.date || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999-99-99"} ${b.time || "99:99"}`));
