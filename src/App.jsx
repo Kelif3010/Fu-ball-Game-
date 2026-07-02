@@ -4,7 +4,7 @@ import { PARTICIPANTS, FLAGS, DE, COLORS, displayTeamName, FIFA_RANKS } from "./
 import { formatDate, formatCountdown, statusLabel, rankLabel, tdColor, movementColor, pointsMovementText, rankMovementText } from './utils/format.js';
 import { buildTeamStats, buildStandings, compareStandingRows, rankMap, buildHeadToHeadStats, buildFormComparisonRows, buildMyAnalysis, buildOpenMatchMap, buildMaxPossibleRows, getPersonMatches, getMatchTitle, buildGroupData, ownerOf, matchSortAsc, matchSortDesc } from './utils/standings.js';
 import { bonusRules, buildBonusRows } from './utils/bonus.js';
-import { fillKnockoutBracket } from './utils/knockout.js';
+import { fillKnockoutBracket, getEliminatedTeams } from './utils/knockout.js';
 import { useScores } from './hooks/useScores.js';
 import { useStandings } from './hooks/useStandings.js';
 import './App.css';
@@ -40,6 +40,7 @@ const SUB_TABS = {
 };
 
 const SCORE_STATUSES = new Set(["FINISHED", "IN_PLAY", "LIVE", "PAUSED"]);
+const ALL_LEAGUE_TEAMS = Object.values(PARTICIPANTS).flat();
 
 function scoreNumber(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -166,7 +167,8 @@ function SubTabs({ activeTab, activeSubTab, onChange, liveCount }) {
   </nav>;
 }
 
-function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, officialMeta = null, prevRankSnapshot = null, onTeamClick = null, liveRankMap = null, allMatches = [] }) {
+function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, officialMeta = null, prevRankSnapshot = null, onTeamClick = null, liveRankMap = null, allMatches = [], mutedTeams = null }) {
+  const isMuted = team => Boolean(mutedTeams && mutedTeams.has(team));
   const progress = maxPts > 0 ? Math.max(row.pts === 0 ? 0 : 6, Math.round((row.pts / maxPts) * 100)) : 0;
   const hasBonus = Number.isFinite(row.bonusTotal);
   const currentRank = index + 1;
@@ -188,7 +190,7 @@ function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, off
       <span className="person-dot" />
       <span className="standing-name-wrap">
         <strong>{row.person}</strong>
-        <small>{sortedTeams.map(team => FLAGS[team] || "").join(" ")}</small>
+        <small>{sortedTeams.map(team => isMuted(team) ? "" : (FLAGS[team] || "")).filter(Boolean).join(" ")}</small>
       </span>
       <span className="standing-points">
         <small>{hasBonus ? "Gesamt" : "Pkt"}</small>
@@ -246,7 +248,7 @@ function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, off
             onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onTeamClick && onTeamClick(team); } }}
             style={{ cursor: "pointer" }}
           >
-            {displayTeamName(team)}
+            {isMuted(team) ? (DE[team] || team) : displayTeamName(team)}
           </span>
         ))}
       </div>
@@ -254,11 +256,11 @@ function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, off
   </article>;
 }
 
-function StandingsPanel({ standings, liveMode = false, officialRanks = {}, openPerson, setOpenPerson, prevRankSnapshot = null, onTeamClick = null, liveRankMap = null, allMatches = [] }) {
+function StandingsPanel({ standings, liveMode = false, officialRanks = {}, openPerson, setOpenPerson, prevRankSnapshot = null, onTeamClick = null, liveRankMap = null, allMatches = [], mutedTeams = null }) {
   const maxPts = Math.max(1, ...standings.map(row => row.pts));
   if (!standings.length) return <EmptyState title="Noch keine Tabelle" text="Sobald Ergebnisse geladen werden, erscheint hier die Rangliste." />;
   return <div className="standings-list">
-    {standings.map((row, index) => <StandingRow key={row.person} row={row} index={index} maxPts={maxPts} open={openPerson === row.person} onToggle={() => setOpenPerson(openPerson === row.person ? "" : row.person)} liveMode={liveMode} officialMeta={liveMode ? officialRanks[row.person] : null} prevRankSnapshot={prevRankSnapshot} onTeamClick={onTeamClick} liveRankMap={liveRankMap} allMatches={allMatches} />)}
+    {standings.map((row, index) => <StandingRow key={row.person} row={row} index={index} maxPts={maxPts} open={openPerson === row.person} onToggle={() => setOpenPerson(openPerson === row.person ? "" : row.person)} liveMode={liveMode} officialMeta={liveMode ? officialRanks[row.person] : null} prevRankSnapshot={prevRankSnapshot} onTeamClick={onTeamClick} liveRankMap={liveRankMap} allMatches={allMatches} mutedTeams={mutedTeams} />)}
   </div>;
 }
 
@@ -1225,6 +1227,9 @@ export default function App() {
   // K.o.-Paarungen selbst weiterrechnen, solange football-data sie noch nicht
   // gefüllt hat (die API behält Vorrang, sobald sie echte Teams liefert).
   const knockoutFilled = useMemo(() => fillKnockoutBracket(knockout), [knockout]);
+  // Ausgeschiedene Teams (Verlierer von K.o.-Spielen bzw. Gruppen-Aus) – nur im
+  // Liga-Tab mit Bonus werden deren Flaggen ausgeblendet.
+  const eliminatedTeams = useMemo(() => getEliminatedTeams(knockoutFilled, ALL_LEAGUE_TEAMS), [knockoutFilled]);
 
   const activeSubTab = subTabs[tab];
   const changeSubTab = id => setSubTabs(prev => ({ ...prev, [tab]: id }));
@@ -1234,7 +1239,7 @@ export default function App() {
     const tableRows = leagueMode === "bonus" ? bonusRows : standings;
     screen = <div className="card-stack">
       <LeagueModeToggle mode={leagueMode} onChange={setLeagueMode} />
-      <StandingsPanel standings={tableRows} openPerson={openPerson} setOpenPerson={setOpenPerson} prevRankSnapshot={leagueMode === "normal" ? prevRankSnapshot : null} onTeamClick={setSelectedTeam} liveRankMap={leagueMode === "normal" ? liveRankMap : null} allMatches={[...played, ...live, ...upcoming]} />
+      <StandingsPanel standings={tableRows} openPerson={openPerson} setOpenPerson={setOpenPerson} prevRankSnapshot={leagueMode === "normal" ? prevRankSnapshot : null} onTeamClick={setSelectedTeam} liveRankMap={leagueMode === "normal" ? liveRankMap : null} allMatches={[...played, ...live, ...upcoming]} mutedTeams={leagueMode === "bonus" ? eliminatedTeams : null} />
     </div>;
   } else if (tab === "live") {
     screen = activeSubTab === "prognose"

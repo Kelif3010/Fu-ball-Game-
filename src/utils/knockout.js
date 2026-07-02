@@ -75,6 +75,41 @@ export function loserTeamOf(match) {
   return "";
 }
 
+// Ermittelt alle ausgeschiedenen Teams: Verlierer beendeter K.o.-Spiele sowie
+// (sobald das Sechzehntelfinale komplett besetzt ist) alle Teams, die es gar
+// nicht in die K.o.-Phase geschafft haben. Ein Team bleibt "drin", solange es
+// gewinnt bzw. sein nächstes Spiel noch nicht verloren hat.
+export function getEliminatedTeams(knockout, allTeams = []) {
+  const eliminated = new Set();
+  if (!Array.isArray(knockout) || knockout.length === 0) return eliminated;
+
+  const inKnockout = new Set();
+  for (const match of knockout) {
+    if (match.homeTeam) inKnockout.add(match.homeTeam);
+    if (match.awayTeam) inKnockout.add(match.awayTeam);
+  }
+
+  // Verlierer beendeter K.o.-Spiele
+  for (const match of knockout) {
+    if (match.status === "FINISHED") {
+      const loser = loserTeamOf(match);
+      if (loser) eliminated.add(loser);
+    }
+  }
+
+  // Gruppen-Aus: nur werten, wenn alle Sechzehntelfinal-Paarungen feststehen,
+  // damit kein noch fehlendes Team faelschlich als ausgeschieden gilt.
+  const last32 = knockout.filter(match => match.stage === "LAST_32");
+  const last32Complete = last32.length > 0 && last32.every(match => match.homeTeam && match.awayTeam);
+  if (last32Complete) {
+    for (const team of allTeams) {
+      if (!inKnockout.has(team)) eliminated.add(team);
+    }
+  }
+
+  return eliminated;
+}
+
 function resolveFeeder(ref, byId) {
   const id = typeof ref === "object" ? ref.id : ref;
   const wantLoser = typeof ref === "object" && ref.loser;
