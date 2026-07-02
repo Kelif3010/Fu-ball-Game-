@@ -4,6 +4,7 @@ import { PARTICIPANTS, FLAGS, DE, COLORS, displayTeamName, FIFA_RANKS } from "./
 import { formatDate, formatCountdown, statusLabel, rankLabel, tdColor, movementColor, pointsMovementText, rankMovementText } from './utils/format.js';
 import { buildTeamStats, buildStandings, compareStandingRows, rankMap, buildHeadToHeadStats, buildFormComparisonRows, buildMyAnalysis, buildOpenMatchMap, buildMaxPossibleRows, getPersonMatches, getMatchTitle, buildGroupData, ownerOf, matchSortAsc, matchSortDesc } from './utils/standings.js';
 import { bonusRules, buildBonusRows } from './utils/bonus.js';
+import { fillKnockoutBracket } from './utils/knockout.js';
 import { useScores } from './hooks/useScores.js';
 import { useStandings } from './hooks/useStandings.js';
 import './App.css';
@@ -565,11 +566,14 @@ function GroupsPanel({ live, played, upcoming }) {
   </div>;
 }
 
-function KnockoutTeamBlock({ team, align = "left" }) {
+function KnockoutTeamBlock({ team, align = "left", predicted = false }) {
   const hasTeam = Boolean(team);
   const owner = hasTeam ? ownerOf(team) : "";
   return <div className={`ko-team-block ${!hasTeam ? "empty" : ""}`} style={{ textAlign: align }}>
-    <strong>{hasTeam ? (align === "right" ? `${DE[team] || team} ${FLAGS[team] || ""}`.trim() : displayTeamName(team)) : "Noch offen"}</strong>
+    <strong>
+      {hasTeam ? (align === "right" ? `${DE[team] || team} ${FLAGS[team] || ""}`.trim() : displayTeamName(team)) : "Noch offen"}
+      {predicted && <span className="ko-predicted-tag" title="Aus dem Ergebnis der Vorrunde berechnet – noch nicht offiziell bestätigt">vorauss.</span>}
+    </strong>
     {owner && <small style={{ color: COLORS[owner] }}>{owner}</small>}
   </div>;
 }
@@ -588,11 +592,11 @@ function KnockoutCard({ match }) {
       <span>{statusLabel(match.status)}</span>
     </div>
     <div className="ko-match-grid">
-      <KnockoutTeamBlock team={match.homeTeam} />
+      <KnockoutTeamBlock team={match.homeTeam} predicted={match.homeTeamPredicted} />
       <div className="ko-score-center">
         <strong>{hasScore ? `${score.hg}:${score.ag}` : "vs"}</strong>
       </div>
-      <KnockoutTeamBlock team={match.awayTeam} align="right" />
+      <KnockoutTeamBlock team={match.awayTeam} align="right" predicted={match.awayTeamPredicted} />
     </div>
     {hasOwners && <div className="ko-owner-row">
       {homeOwner && <InfoPill label={homeOwner} value={DE[match.homeTeam] || match.homeTeam} color={COLORS[homeOwner]} />}
@@ -1218,6 +1222,9 @@ export default function App() {
     buildBonusRows({ standings, live, played, upcoming, knockout }),
     [standings, live, played, upcoming, knockout]
   );
+  // K.o.-Paarungen selbst weiterrechnen, solange football-data sie noch nicht
+  // gefüllt hat (die API behält Vorrang, sobald sie echte Teams liefert).
+  const knockoutFilled = useMemo(() => fillKnockoutBracket(knockout), [knockout]);
 
   const activeSubTab = subTabs[tab];
   const changeSubTab = id => setSubTabs(prev => ({ ...prev, [tab]: id }));
@@ -1234,7 +1241,7 @@ export default function App() {
       ? <ProjectionPanel live={live} liveProjectionStandings={liveProjectionStandings} officialRanks={officialRanks} openPerson={openPerson} setOpenPerson={setOpenPerson} />
       : <LivePanel live={live} expandedMatchId={expandedMatchId} openMatchCenter={openMatchCenter} matchCenters={matchCenters} matchCenterLoading={matchCenterLoading} matchCenterErrors={matchCenterErrors} cachedMatchCenters={cachedMatchCenters} />;
   } else if (tab === "spiele") {
-    screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} upcoming={upcoming} knockout={knockout} standings={standings} />;
+    screen = <GamesPanel subTab={activeSubTab} upcomingByDate={upcomingByDate} played={played} live={live} upcoming={upcoming} knockout={knockoutFilled} standings={standings} />;
   } else if (tab === "stats") {
     screen = <StatsPanel subTab={activeSubTab} maxPossibleRows={statsMaxPossibleRows} formRows={statsFormRows} h2hStats={h2hStats} selectedPerson={selectedH2hPerson} setSelectedPerson={setSelectedH2hPerson} standings={standings} teamStats={teamStats} live={live} played={played} upcoming={upcoming} scorers={scorers} bonusRows={bonusRows} />;
   } else if (tab === "mein") {

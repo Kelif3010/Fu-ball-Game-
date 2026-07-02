@@ -51,6 +51,12 @@ function pickMatchSummary(match) {
   };
 }
 
+function countKnownTeamSlots(matches) {
+  return matches.reduce((count, match) => {
+    return count + (match?.homeTeam?.id ? 1 : 0) + (match?.awayTeam?.id ? 1 : 0);
+  }, 0);
+}
+
 function summarizeFootballDataMatch(match) {
   if (!match) return null;
   return {
@@ -147,6 +153,12 @@ function footballDataSection(result, title) {
 }
 
 async function main() {
+  if (!FOOTBALL_DATA_TOKEN) {
+    console.error("Missing FOOTBALL_DATA_TOKEN. Refusing to overwrite api-audit-report.md without API data.");
+    process.exitCode = 1;
+    return;
+  }
+
   const lines = [
     "# Football API Audit",
     "",
@@ -189,11 +201,16 @@ async function main() {
       for (const stage of stages) {
         const result = await footballDataGet(`/competitions/WC/matches?season=2026&stage=${stage}`);
         const stageMatches = Array.isArray(result.data?.matches) ? result.data.matches : [];
+        const teamSlots = stageMatches.length * 2;
+        const knownTeamSlots = countKnownTeamSlots(stageMatches);
         lines.push(`### ${stage}`, "");
         lines.push(jsonBlock({
           status: result.status,
           count: stageMatches.length,
-          sample: pickMatchSummary(stageMatches[0]),
+          teamSlots,
+          knownTeamSlots,
+          emptyTeamSlots: teamSlots - knownTeamSlots,
+          matches: stageMatches.map(pickMatchSummary),
         }), "");
       }
 

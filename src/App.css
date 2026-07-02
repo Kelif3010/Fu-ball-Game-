@@ -2374,6 +2374,19 @@ body {
   margin-bottom: 0;
 }
 
+.ko-predicted-tag {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+
 .ko-round-section {
   display: grid;
   border: 1px solid rgba(255, 255, 255, 0.08);
