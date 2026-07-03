@@ -568,14 +568,11 @@ function GroupsPanel({ live, played, upcoming }) {
   </div>;
 }
 
-function KnockoutTeamBlock({ team, align = "left", predicted = false }) {
+function KnockoutTeamBlock({ team, align = "left" }) {
   const hasTeam = Boolean(team);
   const owner = hasTeam ? ownerOf(team) : "";
   return <div className={`ko-team-block ${!hasTeam ? "empty" : ""}`} style={{ textAlign: align }}>
-    <strong>
-      {hasTeam ? (align === "right" ? `${DE[team] || team} ${FLAGS[team] || ""}`.trim() : displayTeamName(team)) : "Noch offen"}
-      {predicted && <span className="ko-predicted-tag" title="Aus dem Ergebnis der Vorrunde berechnet – noch nicht offiziell bestätigt">vorauss.</span>}
-    </strong>
+    <strong>{hasTeam ? (align === "right" ? `${DE[team] || team} ${FLAGS[team] || ""}`.trim() : displayTeamName(team)) : "Noch offen"}</strong>
     {owner && <small style={{ color: COLORS[owner] }}>{owner}</small>}
   </div>;
 }
@@ -594,11 +591,11 @@ function KnockoutCard({ match }) {
       <span>{statusLabel(match.status)}</span>
     </div>
     <div className="ko-match-grid">
-      <KnockoutTeamBlock team={match.homeTeam} predicted={match.homeTeamPredicted} />
+      <KnockoutTeamBlock team={match.homeTeam} />
       <div className="ko-score-center">
         <strong>{hasScore ? `${score.hg}:${score.ag}` : "vs"}</strong>
       </div>
-      <KnockoutTeamBlock team={match.awayTeam} align="right" predicted={match.awayTeamPredicted} />
+      <KnockoutTeamBlock team={match.awayTeam} align="right" />
     </div>
     {hasOwners && <div className="ko-owner-row">
       {homeOwner && <InfoPill label={homeOwner} value={DE[match.homeTeam] || match.homeTeam} color={COLORS[homeOwner]} />}
@@ -1220,13 +1217,17 @@ export default function App() {
     liveProjectionStandings.reduce((acc, row, i) => { acc[row.person] = i + 1; return acc; }, {}),
     [liveProjectionStandings]
   );
-  const bonusRows = useMemo(() =>
-    buildBonusRows({ standings, live, played, upcoming, knockout }),
-    [standings, live, played, upcoming, knockout]
-  );
   // K.o.-Paarungen selbst weiterrechnen, solange football-data sie noch nicht
   // gefüllt hat (die API behält Vorrang, sobald sie echte Teams liefert).
   const knockoutFilled = useMemo(() => fillKnockoutBracket(knockout), [knockout]);
+  // Bonus auf Basis der gefüllten Paarungen: So gibt es die K.o.-Punkte schon,
+  // wenn ein Team rechnerisch weiter ist, auch bevor die API es nachträgt.
+  // Doppelpunkte sind ausgeschlossen, weil pro Team/Runde nur einmal gewertet
+  // wird und die API-Daten dieselbe (dann echte) Paarung liefern.
+  const bonusRows = useMemo(() =>
+    buildBonusRows({ standings, live, played, upcoming, knockout: knockoutFilled }),
+    [standings, live, played, upcoming, knockoutFilled]
+  );
   // Ausgeschiedene Teams (Verlierer von K.o.-Spielen bzw. Gruppen-Aus) – nur im
   // Liga-Tab mit Bonus werden deren Flaggen ausgeblendet.
   const eliminatedTeams = useMemo(() => getEliminatedTeams(knockoutFilled, ALL_LEAGUE_TEAMS), [knockoutFilled]);
