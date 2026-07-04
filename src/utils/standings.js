@@ -395,8 +395,8 @@ export function buildGroupData(live, played, upcoming) {
     groups[m.group].teams.add(m.awayTeam);
     groups[m.group].matches.push(m);
   }
-  const finishedMatches = [...played, ...live.filter(m => matchScore(m))];
-  const allTeamStats = buildTeamStats(finishedMatches);
+  const finishedGroupMatches = [...played, ...live.filter(m => matchScore(m))].filter(m => m.group);
+  const allTeamStats = buildTeamStats(finishedGroupMatches);
   return Object.entries(groups)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([groupLetter, data]) => {
