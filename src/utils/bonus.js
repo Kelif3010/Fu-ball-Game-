@@ -26,6 +26,36 @@ const KNOCKOUT_STAGE_LABELS = {
 
 const WORLD_CHAMPION_BONUS = 3;
 
+const BONUS_TYPE_ORDER = {
+  group: 0,
+  knockout: 10,
+  champion: 20,
+};
+
+const GROUP_LABEL_ORDER = {
+  winner: 0,
+  runnerUp: 1,
+  bestThird: 2,
+};
+
+function groupBonusOrder(index, isBestThird) {
+  if (index === 0) return GROUP_LABEL_ORDER.winner;
+  if (index === 1) return GROUP_LABEL_ORDER.runnerUp;
+  if (isBestThird) return GROUP_LABEL_ORDER.bestThird;
+  return 99;
+}
+
+function detailSortKey(detail) {
+  const typeOrder = BONUS_TYPE_ORDER[detail.type] ?? 99;
+  const stageOrder = detail.stage ? KNOCKOUT_STAGE_ORDER.indexOf(detail.stage) : -1;
+  return [
+    typeOrder,
+    detail.groupOrder ?? (stageOrder >= 0 ? stageOrder : 99),
+    detail.group || "",
+    detail.team || "",
+  ].join("|");
+}
+
 function teamLabel(team) {
   return team || "Team";
 }
@@ -99,6 +129,8 @@ export function buildBonusRows({ standings, live, played, upcoming, knockout }) 
         team: teamRow.team,
         points,
         label,
+        group: group.group,
+        groupOrder: groupBonusOrder(index, bestThirdTeams.has(teamRow.team)),
       });
     });
   });
@@ -126,6 +158,8 @@ export function buildBonusRows({ standings, live, played, upcoming, knockout }) 
           team,
           points,
           label: `${teamLabel(team)}: ${KNOCKOUT_STAGE_LABELS[stage] || "K.o.-Runde erreicht"}`,
+          stage,
+          groupOrder: KNOCKOUT_STAGE_ORDER.indexOf(stage),
         });
       });
   });
@@ -141,6 +175,7 @@ export function buildBonusRows({ standings, live, played, upcoming, knockout }) 
         team: champion,
         points: WORLD_CHAMPION_BONUS,
         label: "Weltmeister",
+        groupOrder: 0,
       });
     }
   }
@@ -153,6 +188,7 @@ export function buildBonusRows({ standings, live, played, upcoming, knockout }) 
         bonusTotal,
         totalPts: row.normalPts + bonusTotal,
         pts: row.normalPts + bonusTotal,
+        bonusDetails: [...row.bonusDetails].sort((a, b) => detailSortKey(a).localeCompare(detailSortKey(b))),
       };
     })
     .sort((a, b) => b.totalPts - a.totalPts || b.normalPts - a.normalPts || compareStandingRows(a, b));

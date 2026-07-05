@@ -205,15 +205,22 @@ export function buildOpenMatchMap(live, upcoming) {
   return map;
 }
 
-export function buildMaxPossibleRows(standings, live, upcoming) {
+export function buildMaxPossibleRows(standings, live, upcoming, bonusRows = []) {
   const openMap = buildOpenMatchMap(live, upcoming);
+  const bonusByPerson = Object.fromEntries((Array.isArray(bonusRows) ? bonusRows : []).map(row => [row.person, row]));
   return standings.map((row, index) => {
     const openCount = openMap[row.person]?.length || 0;
+    const bonusTotal = bonusByPerson[row.person]?.bonusTotal || 0;
+    const openWinPoints = openCount * 3;
+    const currentPointsWithBonus = row.pts + bonusTotal;
     return {
       ...row,
       rank: index + 1,
       openCount,
-      maxPossiblePoints: row.pts + (openCount * 3),
+      bonusTotal,
+      openWinPoints,
+      currentPointsWithBonus,
+      maxPossiblePoints: currentPointsWithBonus + openWinPoints,
     };
   });
 }

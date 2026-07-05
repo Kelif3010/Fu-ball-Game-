@@ -683,14 +683,18 @@ function BonusCard({ rows = [] }) {
       <div className="analysis-head">
         <div>
           <h3>Bonusregeln</h3>
-          <p>Gruppenbonus nach aktuellem Gruppenstand. K.o.-Bonus zählt als höchste erreichte Runde, Weltmeister gibt extra Punkte.</p>
+          <p>Chronologisch nach Gruppenplatzierung, erreichter K.o.-Runde und Weltmeisterbonus.</p>
         </div>
         <span className="analysis-badge">Aktuell</span>
       </div>
       <div className="bonus-rule-grid">
         <StatChip label="Gruppensieger" value={`+${bonusRules.group.winner}`} color="#fbbf24" />
-        <StatChip label="Zweiter" value={`+${bonusRules.group.runnerUp}`} color="#fbbf24" />
-        <StatChip label="Top-3." value={`+${bonusRules.group.bestThird}`} color="#fbbf24" />
+        <StatChip label="Gruppenzweiter" value={`+${bonusRules.group.runnerUp}`} color="#fbbf24" />
+        <StatChip label="Bester Dritter" value={`+${bonusRules.group.bestThird}`} color="#fbbf24" />
+        <StatChip label="Sechzehntel" value={`+${bonusRules.knockout.LAST_32}`} color="#38bdf8" />
+        <StatChip label="Achtelfinale" value={`+${bonusRules.knockout.LAST_16}`} color="#38bdf8" />
+        <StatChip label="Viertelfinale" value={`+${bonusRules.knockout.QUARTER_FINALS}`} color="#38bdf8" />
+        <StatChip label="Halbfinale" value={`+${bonusRules.knockout.SEMI_FINALS}`} color="#38bdf8" />
         <StatChip label="Finale" value={`+${bonusRules.knockout.FINAL}`} color="#38bdf8" />
         <StatChip label="Weltmeister" value={`+${bonusRules.champion}`} color="#34d399" />
       </div>
@@ -804,7 +808,7 @@ function StatsMaxPointsCard({ rows }) {
     <div className="analysis-head">
       <div>
         <h3>📈 Maximale mögliche Punkte</h3>
-        <p>Aktuelle Punkte plus alle offenen Spiele mit 3 Punkten pro Sieg.</p>
+        <p>Aktuelle Spielpunkte plus Bonus und alle offenen Spiele mit 3 Punkten pro Sieg.</p>
       </div>
       <span className="analysis-badge">Alle Teilnehmer</span>
     </div>
@@ -815,7 +819,7 @@ function StatsMaxPointsCard({ rows }) {
             <span className="stats-rank">{rankLabel(row.rank - 1)}</span>
             <div className="stats-name">
               <strong style={{ color: COLORS[row.person] }}>{row.person}</strong>
-              <small>{row.pts} aktuell · {row.openCount} offen</small>
+              <small>{row.pts} Spiele · +{row.bonusTotal || 0} Bonus · {row.openCount} offen</small>
             </div>
           </div>
           <div className="stats-points">
@@ -1193,7 +1197,7 @@ export default function App() {
 
   const {
     teamStats, standings, officialRanks, liveProjectionStandings, leaderChange,
-    upcomingByDate, statsMaxPossibleRows, statsFormRows, h2hStats,
+    upcomingByDate, statsFormRows, h2hStats,
   } = useStandings({ played, live, upcoming });
 
   const [tab, setTab] = useState("liga");
@@ -1227,6 +1231,10 @@ export default function App() {
   const bonusRows = useMemo(() =>
     buildBonusRows({ standings, live, played, upcoming, knockout: knockoutFilled }),
     [standings, live, played, upcoming, knockoutFilled]
+  );
+  const statsMaxPossibleRows = useMemo(() =>
+    buildMaxPossibleRows(standings, live, upcoming, bonusRows),
+    [standings, live, upcoming, bonusRows]
   );
   // Ausgeschiedene Teams (Verlierer von K.o.-Spielen bzw. Gruppen-Aus) – nur im
   // Liga-Tab mit Bonus werden deren Flaggen ausgeblendet.
