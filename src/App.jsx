@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import HeadToHead from "./HeadToHead";
 import { PARTICIPANTS, FLAGS, DE, COLORS, displayTeamName, FIFA_RANKS } from "./shared";
 import { formatDate, formatCountdown, statusLabel, rankLabel, tdColor, movementColor, pointsMovementText, rankMovementText } from './utils/format.js';
-import { buildTeamStats, buildStandings, compareStandingRows, rankMap, buildHeadToHeadStats, buildFormComparisonRows, buildMyAnalysis, buildOpenMatchMap, buildMaxPossibleRows, getPersonMatches, getMatchTitle, buildGroupData, ownerOf, matchSortAsc, matchSortDesc } from './utils/standings.js';
-import { bonusRules, buildBonusRows } from './utils/bonus.js';
+import { buildTeamStats, buildStandings, compareStandingRows, rankMap, buildHeadToHeadStats, buildFormComparisonRows, buildMyAnalysis, buildOpenMatchMap, getPersonMatches, getMatchTitle, buildGroupData, ownerOf, matchSortAsc, matchSortDesc } from './utils/standings.js';
+import { bonusRules, buildBonusRows, buildMaxPossibleRows } from './utils/bonus.js';
 import { fillKnockoutBracket, getEliminatedTeams } from './utils/knockout.js';
 import { useScores } from './hooks/useScores.js';
 import { useStandings } from './hooks/useStandings.js';
@@ -804,7 +804,7 @@ function StatsMaxPointsCard({ rows }) {
     <div className="analysis-head">
       <div>
         <h3>📈 Maximale mögliche Punkte</h3>
-        <p>Aktuelle Spielpunkte plus Bonus und alle offenen Spiele mit 3 Punkten pro Sieg.</p>
+        <p>Aktuelle Punkte plus Bonus und maximal möglicher Zusatzbonus aus dem verbleibenden Bracket.</p>
       </div>
       <span className="analysis-badge">Alle Teilnehmer</span>
     </div>
@@ -815,7 +815,7 @@ function StatsMaxPointsCard({ rows }) {
             <span className="stats-rank">{rankLabel(row.rank - 1)}</span>
             <div className="stats-name">
               <strong style={{ color: COLORS[row.person] }}>{row.person}</strong>
-              <small>{row.pts} Spiele · +{row.bonusTotal || 0} Bonus · {row.openCount} offen</small>
+              <small>{row.pts} Pkt · +{row.bonusTotal || 0} Bonus · {row.openCount} Team{row.openCount !== 1 ? "s" : ""} aktiv</small>
             </div>
           </div>
           <div className="stats-points">

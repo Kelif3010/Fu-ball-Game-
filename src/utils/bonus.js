@@ -199,3 +199,98 @@ export const bonusRules = {
   knockout: KNOCKOUT_BONUS,
   champion: WORLD_CHAMPION_BONUS,
 };
+
+// WC 2026 knockout bracket from Round of 16 onwards.
+// Strings = known teams already in that match.
+// Arrays  = possible teams (one will advance from the preceding AF match).
+const WC2026_BRACKET = {
+  stage: "FINAL",
+  home: {
+    stage: "SEMI_FINALS",
+    home: { stage: "QUARTER_FINALS", home: "France", away: "Morocco" },
+    away: { stage: "QUARTER_FINALS", home: ["Portugal", "Spain"], away: ["USA", "Belgium"] },
+  },
+  away: {
+    stage: "SEMI_FINALS",
+    home: { stage: "QUARTER_FINALS", home: ["Argentina", "Egypt"], away: ["Switzerland", "Colombia"] },
+    away: { stage: "QUARTER_FINALS", home: ["Brazil", "Norway"], away: ["Mexico", "England"] },
+  },
+};
+
+function bracketTeams(node) {
+  if (typeof node === "string") return [node];
+  if (Array.isArray(node)) return node;
+  return [...bracketTeams(node.home), ...bracketTeams(node.away)];
+}
+
+// Recursively computes the max additional bonus a participant can still earn.
+// activeTeams: Set of teams still in upcoming/live matches (not eliminated).
+// earnedStages: map of team → Set of KO stage strings already in bonus.
+function maxBonusFromBracket(node, person, activeTeams, earnedStages) {
+  if (typeof node === "string") {
+    if (ownerOf(node) !== person || !activeTeams.has(node)) return { bonus: 0, canWin: false, teamHighest: -1 };
+    const earned = earnedStages[node] || new Set();
+    const teamHighest = KNOCKOUT_STAGE_ORDER.reduce((max, s, i) => earned.has(s) ? i : max, -1);
+    return { bonus: 0, canWin: true, teamHighest };
+  }
+
+  if (Array.isArray(node)) {
+    const personActive = node.filter(t => ownerOf(t) === person && activeTeams.has(t));
+    if (!personActive.length) return { bonus: 0, canWin: false, teamHighest: -1 };
+    const team = personActive[0];
+    const earned = earnedStages[team] || new Set();
+    const teamHighest = KNOCKOUT_STAGE_ORDER.reduce((max, s, i) => earned.has(s) ? i : max, -1);
+    return { bonus: 0, canWin: true, teamHighest };
+  }
+
+  const { stage, home, away } = node;
+  const stageBonus = KNOCKOUT_BONUS[stage] || 0;
+  const stageIdx = KNOCKOUT_STAGE_ORDER.indexOf(stage);
+
+  const homeRes = maxBonusFromBracket(home, person, activeTeams, earnedStages);
+  const awayRes = maxBonusFromBracket(away, person, activeTeams, earnedStages);
+
+  let bonus = homeRes.bonus + awayRes.bonus;
+  if (homeRes.canWin && homeRes.teamHighest < stageIdx) bonus += stageBonus;
+  if (awayRes.canWin && awayRes.teamHighest < stageIdx) bonus += stageBonus;
+
+  return { bonus, canWin: homeRes.canWin || awayRes.canWin, teamHighest: stageIdx };
+}
+
+export function buildMaxPossibleRows(standings, live, upcoming, bonusRows = []) {
+  const activeTeams = new Set();
+  [...(live || []), ...(upcoming || [])].forEach(m => {
+    if (m.homeTeam) activeTeams.add(m.homeTeam);
+    if (m.awayTeam) activeTeams.add(m.awayTeam);
+  });
+
+  const allBracketTeams = new Set(bracketTeams(WC2026_BRACKET));
+  const bonusByPerson = Object.fromEntries((Array.isArray(bonusRows) ? bonusRows : []).map(r => [r.person, r]));
+
+  return standings.map((row, index) => {
+    const bonusRow = bonusByPerson[row.person];
+    const bonusTotal = bonusRow?.bonusTotal || 0;
+    const currentPointsWithBonus = row.pts + bonusTotal;
+
+    const earnedStages = {};
+    (bonusRow?.bonusDetails || []).filter(d => d.type === "knockout" && d.stage).forEach(d => {
+      earnedStages[d.team] = earnedStages[d.team] || new Set();
+      earnedStages[d.team].add(d.stage);
+    });
+
+    const result = maxBonusFromBracket(WC2026_BRACKET, row.person, activeTeams, earnedStages);
+    const maxFutureBonus = result.bonus + (result.canWin ? WORLD_CHAMPION_BONUS : 0);
+
+    const activeCount = (PARTICIPANTS[row.person] || []).filter(t => allBracketTeams.has(t) && activeTeams.has(t)).length;
+
+    return {
+      ...row,
+      rank: index + 1,
+      openCount: activeCount,
+      bonusTotal,
+      openWinPoints: maxFutureBonus,
+      currentPointsWithBonus,
+      maxPossiblePoints: currentPointsWithBonus + maxFutureBonus,
+    };
+  });
+}
