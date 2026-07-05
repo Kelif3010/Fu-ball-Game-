@@ -683,18 +683,14 @@ function BonusCard({ rows = [] }) {
       <div className="analysis-head">
         <div>
           <h3>Bonusregeln</h3>
-          <p>Chronologisch nach Gruppenplatzierung, erreichter K.o.-Runde und Weltmeisterbonus.</p>
+          <p>Gruppenbonus nach aktuellem Gruppenstand. K.o.-Bonus zählt als höchste erreichte Runde, Weltmeister gibt extra Punkte.</p>
         </div>
         <span className="analysis-badge">Aktuell</span>
       </div>
       <div className="bonus-rule-grid">
         <StatChip label="Gruppensieger" value={`+${bonusRules.group.winner}`} color="#fbbf24" />
-        <StatChip label="Gruppenzweiter" value={`+${bonusRules.group.runnerUp}`} color="#fbbf24" />
-        <StatChip label="Bester Dritter" value={`+${bonusRules.group.bestThird}`} color="#fbbf24" />
-        <StatChip label="Sechzehntel" value={`+${bonusRules.knockout.LAST_32}`} color="#38bdf8" />
-        <StatChip label="Achtelfinale" value={`+${bonusRules.knockout.LAST_16}`} color="#38bdf8" />
-        <StatChip label="Viertelfinale" value={`+${bonusRules.knockout.QUARTER_FINALS}`} color="#38bdf8" />
-        <StatChip label="Halbfinale" value={`+${bonusRules.knockout.SEMI_FINALS}`} color="#38bdf8" />
+        <StatChip label="Zweiter" value={`+${bonusRules.group.runnerUp}`} color="#fbbf24" />
+        <StatChip label="Top-3." value={`+${bonusRules.group.bestThird}`} color="#fbbf24" />
         <StatChip label="Finale" value={`+${bonusRules.knockout.FINAL}`} color="#38bdf8" />
         <StatChip label="Weltmeister" value={`+${bonusRules.champion}`} color="#34d399" />
       </div>
