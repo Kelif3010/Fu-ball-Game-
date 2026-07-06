@@ -2510,6 +2510,303 @@ body {
   justify-content: center;
 }
 
+/* === Turnierplan === */
+
+.turnierplan {
+  padding-bottom: 24px;
+}
+
+.tp-champ-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 12px;
+  background: linear-gradient(135deg, rgba(251,191,36,0.1), transparent);
+  border: 1px solid rgba(251,191,36,0.25);
+  border-radius: 14px;
+}
+
+.tp-trophy {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.tp-champ-name {
+  font-size: 15px;
+  font-weight: 950;
+  color: #fbbf24;
+  text-align: center;
+}
+
+/* ── Bracket tree ── */
+
+.tp-tree-wrap {
+  overflow-x: auto;
+  overflow-y: visible;
+  min-width: 0;
+}
+
+.bnode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.bn-stem {
+  width: 2px;
+  height: 10px;
+  background: rgba(255,255,255,0.18);
+  flex-shrink: 0;
+}
+
+.bn-conn {
+  display: flex;
+  width: 50%;
+  height: 20px;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.bn-conn-l {
+  flex: 1;
+  border-top: 2px solid rgba(255,255,255,0.2);
+  border-left: 2px solid rgba(255,255,255,0.2);
+  border-radius: 5px 0 0 0;
+}
+
+.bn-conn-r {
+  flex: 1;
+  border-top: 2px solid rgba(255,255,255,0.2);
+  border-right: 2px solid rgba(255,255,255,0.2);
+  border-radius: 0 5px 0 0;
+}
+
+.bn-kids {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* ── Bracket match card (bc) ── */
+
+.bc {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 10px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bc.bc-live {
+  border-color: rgba(248,113,113,0.4);
+  background: rgba(248,113,113,0.06);
+}
+
+.bc.bc-done {
+  border-color: rgba(255,255,255,0.07);
+}
+
+.bnd0 .bc {
+  max-width: 280px;
+  padding: 14px 12px;
+  border-color: rgba(251,191,36,0.25);
+}
+
+.bnd1 .bc {
+  max-width: 220px;
+  padding: 10px;
+  border-radius: 11px;
+}
+
+.bnd2 .bc {
+  max-width: 160px;
+  padding: 7px 8px;
+  border-radius: 9px;
+}
+
+.bc-t {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.bc-r {
+  justify-content: flex-end;
+}
+
+.bc-t.bc-w .bc-name { color: #34d399; font-weight: 950; }
+.bc-t.bc-l { opacity: 0.4; }
+
+.bc-flag {
+  font-size: 20px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.bnd1 .bc-flag { font-size: 18px; }
+.bnd2 .bc-flag { font-size: 15px; }
+
+.bc-name {
+  font-size: 11px;
+  font-weight: 900;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bnd0 .bc-name { font-size: 13px; }
+.bnd2 .bc-name { font-size: 10px; letter-spacing: 0.2px; }
+
+.bc-r .bc-name {
+  text-align: right;
+}
+
+.bc-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.bc-score {
+  font-size: 16px;
+  font-weight: 950;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.bc-score.bl { color: #f87171; }
+
+.bnd0 .bc-score { font-size: 20px; }
+.bnd2 .bc-score { font-size: 13px; }
+
+.bc-vs {
+  font-size: 10px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.bc-date {
+  font-size: 9px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+/* ── Round headers & list sections ── */
+
+.tp-round-hdr {
+  font-size: 11px;
+  font-weight: 950;
+  color: #fbbf24;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+
+.tp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+/* ── TpCard (list match card) ── */
+
+.tp-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 10px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tp-card.live { border-color: rgba(248,113,113,0.3); }
+.tp-card.done { border-color: rgba(255,255,255,0.06); }
+
+.tp-card-date {
+  font-size: 9px;
+  font-weight: 900;
+  color: #475569;
+  text-align: center;
+}
+
+.tp-card-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tp-ct {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.tp-ct-r {
+  justify-content: flex-end;
+  flex-direction: row-reverse;
+}
+
+.tp-ct.won .tp-ct-name { color: #34d399; font-weight: 950; }
+.tp-ct.lost { opacity: 0.38; }
+
+.tp-flag {
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.tp-ct-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tp-ct-info-r {
+  align-items: flex-end;
+}
+
+.tp-ct-name {
+  font-size: 10px;
+  font-weight: 900;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60px;
+}
+
+.tp-owner {
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.tp-score {
+  font-size: 13px;
+  font-weight: 950;
+  color: #fff;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 28px;
+  text-align: center;
+}
+
 /* === Modal === */
 
 .modal-overlay {

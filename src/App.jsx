@@ -4,7 +4,7 @@ import { PARTICIPANTS, FLAGS, DE, COLORS, displayTeamName, FIFA_RANKS } from "./
 import { formatDate, formatCountdown, statusLabel, rankLabel, tdColor, movementColor, pointsMovementText, rankMovementText } from './utils/format.js';
 import { buildTeamStats, buildStandings, compareStandingRows, rankMap, buildHeadToHeadStats, buildFormComparisonRows, buildMyAnalysis, buildOpenMatchMap, getPersonMatches, getMatchTitle, buildGroupData, ownerOf, matchSortAsc, matchSortDesc } from './utils/standings.js';
 import { bonusRules, buildBonusRows, buildMaxPossibleRows } from './utils/bonus.js';
-import { fillKnockoutBracket, getEliminatedTeams } from './utils/knockout.js';
+import { fillKnockoutBracket, getEliminatedTeams, KNOCKOUT_FEEDERS } from './utils/knockout.js';
 import { useScores } from './hooks/useScores.js';
 import { useStandings } from './hooks/useStandings.js';
 import './App.css';
@@ -28,6 +28,7 @@ const SUB_TABS = {
     { id: "ergebnisse", label: "Ergebnisse" },
     { id: "gruppen", label: "Gruppen" },
     { id: "ko", label: "K.o." },
+    { id: "turnierplan", label: "Turnierplan" },
   ],
   stats: [
     { id: "bonus", label: "Bonus" },
@@ -648,6 +649,133 @@ function KnockoutPanel({ knockout = [] }) {
   </div>;
 }
 
+const TP_TREE_DEPTH = 2; // Visuelle Baumtiefe: FINALE → HF → VF (3 Ebenen)
+
+function TurnierplanPanel({ knockout = [] }) {
+  if (!Array.isArray(knockout) || !knockout.length) {
+    return <EmptyState title="Noch kein Turnierplan" text="Sobald die K.o.-Phase startet, erscheint hier der vollständige Turnierplan." />;
+  }
+  const byId = new Map(knockout.map(m => [m.id, m]));
+  const finalMatch = knockout.find(m => m.stage === "FINAL");
+  const thirdPlace = knockout.find(m => m.stage === "THIRD_PLACE");
+  const r16 = knockout.filter(m => m.stage === "LAST_16").sort(matchSortAsc);
+  const last32 = knockout.filter(m => m.stage === "LAST_32").sort(matchSortAsc);
+  if (!finalMatch) {
+    return <EmptyState title="Noch kein Turnierplan" text="Sobald die K.o.-Phase startet, erscheint hier der vollständige Turnierplan." />;
+  }
+  const champ = finalMatch.winner === "HOME_TEAM" ? finalMatch.homeTeam : finalMatch.winner === "AWAY_TEAM" ? finalMatch.awayTeam : null;
+  return (
+    <div className="card-stack turnierplan">
+      <div className="tp-champ-box">
+        <span className="tp-trophy">🏆</span>
+        <span className="tp-champ-name">
+          {champ ? `${FLAGS[champ] || ""} ${DE[champ] || champ}` : "Weltmeister"}
+        </span>
+      </div>
+      <div className="tp-tree-wrap">
+        <BracketNode matchId={finalMatch.id} byId={byId} depth={0} />
+      </div>
+      {thirdPlace && <>
+        <div className="tp-round-hdr">Spiel um Platz 3</div>
+        <TpCard match={thirdPlace} />
+      </>}
+      {r16.length > 0 && <>
+        <div className="tp-round-hdr">Achtelfinale</div>
+        <div className="tp-grid">{r16.map(m => <TpCard key={m.id} match={m} />)}</div>
+      </>}
+      {last32.length > 0 && <>
+        <div className="tp-round-hdr">Runde der letzten 32</div>
+        <div className="tp-grid">{last32.map(m => <TpCard key={m.id} match={m} />)}</div>
+      </>}
+    </div>
+  );
+}
+
+function BracketNode({ matchId, byId, depth }) {
+  const match = byId.get(matchId);
+  if (!match) return null;
+  const fids = depth < TP_TREE_DEPTH ? KNOCKOUT_FEEDERS[matchId] : null;
+  const leftId = fids ? (typeof fids[0] === 'object' ? fids[0].id : fids[0]) : null;
+  const rightId = fids ? (typeof fids[1] === 'object' ? fids[1].id : fids[1]) : null;
+  return (
+    <div className={`bnode bnd${depth}`}>
+      <BracketCard match={match} depth={depth} />
+      {leftId && rightId && <>
+        <div className="bn-stem" />
+        <div className="bn-conn">
+          <div className="bn-conn-l" />
+          <div className="bn-conn-r" />
+        </div>
+        <div className="bn-kids">
+          <BracketNode matchId={leftId} byId={byId} depth={depth + 1} />
+          <BracketNode matchId={rightId} byId={byId} depth={depth + 1} />
+        </div>
+      </>}
+    </div>
+  );
+}
+
+function BracketCard({ match, depth }) {
+  const score = getActualScore(match);
+  const live = ["IN_PLAY", "LIVE", "PAUSED"].includes(match?.status);
+  const done = match?.status === "FINISHED";
+  const hw = match?.winner === "HOME_TEAM";
+  const aw = match?.winner === "AWAY_TEAM";
+  const ht = match?.homeTeam;
+  const at = match?.awayTeam;
+  const n = (t) => depth >= 2 ? (DE[t] || t || "TBD").slice(0, 3).toUpperCase() : (DE[t] || t || "TBD");
+  return (
+    <div className={`bc${live ? " bc-live" : done ? " bc-done" : ""}`}>
+      <div className={`bc-t${hw ? " bc-w" : aw ? " bc-l" : ""}`}>
+        <span className="bc-flag">{ht ? (FLAGS[ht] || "🏳️") : "❓"}</span>
+        <span className="bc-name">{ht ? n(ht) : "TBD"}</span>
+      </div>
+      <div className="bc-mid">
+        {score ? <span className={`bc-score${live ? " bl" : ""}`}>{score.hg}:{score.ag}</span> : <span className="bc-vs">vs</span>}
+        {match?.date && <span className="bc-date">{match.date.slice(8, 10)}.{match.date.slice(5, 7)}.</span>}
+      </div>
+      <div className={`bc-t bc-r${aw ? " bc-w" : hw ? " bc-l" : ""}`}>
+        <span className="bc-name">{at ? n(at) : "TBD"}</span>
+        <span className="bc-flag">{at ? (FLAGS[at] || "🏳️") : "❓"}</span>
+      </div>
+    </div>
+  );
+}
+
+function TpCard({ match }) {
+  const score = getActualScore(match);
+  const live = ["IN_PLAY", "LIVE", "PAUSED"].includes(match?.status);
+  const done = match?.status === "FINISHED";
+  const hw = match?.winner === "HOME_TEAM";
+  const aw = match?.winner === "AWAY_TEAM";
+  const ht = match?.homeTeam;
+  const at = match?.awayTeam;
+  const ho = ownerOf(ht);
+  const ao = ownerOf(at);
+  return (
+    <div className={`tp-card${live ? " live" : done ? " done" : ""}`}>
+      <div className="tp-card-date">{match?.date ? formatDate(match.date.slice(0, 10)) : "–"}</div>
+      <div className="tp-card-row">
+        <div className={`tp-ct${hw ? " won" : aw ? " lost" : ""}`}>
+          <span className="tp-flag">{ht ? (FLAGS[ht] || "🏳️") : "❓"}</span>
+          <div className="tp-ct-info">
+            <span className="tp-ct-name">{ht ? (DE[ht] || ht) : "TBD"}</span>
+            {ho && <span className="tp-owner" style={{ color: COLORS[ho] }}>{ho}</span>}
+          </div>
+        </div>
+        <span className="tp-score">{score ? `${score.hg}:${score.ag}` : "–:–"}</span>
+        <div className={`tp-ct tp-ct-r${aw ? " won" : hw ? " lost" : ""}`}>
+          <div className="tp-ct-info tp-ct-info-r">
+            <span className="tp-ct-name">{at ? (DE[at] || at) : "TBD"}</span>
+            {ao && <span className="tp-owner" style={{ color: COLORS[ao] }}>{ao}</span>}
+          </div>
+          <span className="tp-flag">{at ? (FLAGS[at] || "🏳️") : "❓"}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GamesPanel({ subTab, upcomingByDate, played, live, upcoming, knockout, standings }) {
   if (subTab === "ergebnisse") {
     return <div className="card-stack">{played.length === 0 ? <EmptyState title="Noch keine Ergebnisse" text="Beendete Spiele erscheinen hier automatisch." /> : played.map((m, i) => <ScoreCard key={`played-${m.id || i}`} match={m} />)}</div>;
@@ -657,6 +785,9 @@ function GamesPanel({ subTab, upcomingByDate, played, live, upcoming, knockout, 
   }
   if (subTab === "ko") {
     return <KnockoutPanel knockout={knockout} />;
+  }
+  if (subTab === "turnierplan") {
+    return <TurnierplanPanel knockout={knockout} />;
   }
   const dates = Object.keys(upcomingByDate);
   return <div className="card-stack">
