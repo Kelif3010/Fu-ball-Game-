@@ -267,7 +267,7 @@ export function buildMaxPossibleRows(standings, live, upcoming, bonusRows = []) 
   const allBracketTeams = new Set(bracketTeams(WC2026_BRACKET));
   const bonusByPerson = Object.fromEntries((Array.isArray(bonusRows) ? bonusRows : []).map(r => [r.person, r]));
 
-  return standings.map((row, index) => {
+  const rows = standings.map(row => {
     const bonusRow = bonusByPerson[row.person];
     const bonusTotal = bonusRow?.bonusTotal || 0;
     const currentPointsWithBonus = row.pts + bonusTotal;
@@ -285,7 +285,6 @@ export function buildMaxPossibleRows(standings, live, upcoming, bonusRows = []) 
 
     return {
       ...row,
-      rank: index + 1,
       openCount: activeCount,
       bonusTotal,
       openWinPoints: maxFutureBonus,
@@ -293,4 +292,13 @@ export function buildMaxPossibleRows(standings, live, upcoming, bonusRows = []) 
       maxPossiblePoints: currentPointsWithBonus + maxFutureBonus,
     };
   });
+
+  // Sortierung nach maximal möglichen Punkten, bei Gleichstand nach aktuellem
+  // Punktestand inkl. Bonus.
+  rows.sort((a, b) =>
+    b.maxPossiblePoints - a.maxPossiblePoints ||
+    b.currentPointsWithBonus - a.currentPointsWithBonus
+  );
+
+  return rows.map((row, index) => ({ ...row, rank: index + 1 }));
 }
