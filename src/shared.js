@@ -38,6 +38,10 @@ export const COLORS = {
 
 export const displayTeamName = team => `${FLAGS[team] || ""} ${DE[team] || team || "Team"}`.trim();
 
+export const MANUAL_BONUS = {
+  Ken: 3,
+};
+
 export const FIFA_RANKS = {
   "Argentina": 1, "Spain": 2, "France": 3, "England": 4, "Portugal": 5,
   "Brazil": 6, "Morocco": 7, "Netherlands": 8, "Belgium": 9, "Germany": 10,

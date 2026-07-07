@@ -1,4 +1,4 @@
-import { PARTICIPANTS, FIFA_RANKS } from "../shared.js";
+import { PARTICIPANTS, FIFA_RANKS, MANUAL_BONUS } from "../shared.js";
 import { buildGroupData, compareStandingRows, matchSortAsc, ownerOf } from "./standings.js";
 
 const GROUP_BONUS = {
@@ -182,7 +182,8 @@ export function buildBonusRows({ standings, live, played, upcoming, knockout }) 
 
   return Object.values(rowsByPerson)
     .map(row => {
-      const bonusTotal = row.groupBonus + row.knockoutBonus + row.championBonus;
+      const manualBonus = MANUAL_BONUS[row.person] || 0;
+      const bonusTotal = row.groupBonus + row.knockoutBonus + row.championBonus + manualBonus;
       return {
         ...row,
         bonusTotal,
