@@ -1,4 +1,4 @@
-const CACHE_NAME = "wm-liga-shell-v18";
+const CACHE_NAME = "wm-liga-shell-v19";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/fifa-ranks.js"];
 
 self.addEventListener("install", event => {
