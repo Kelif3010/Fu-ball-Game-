@@ -1,5 +1,5 @@
 import { PARTICIPANTS, FIFA_RANKS } from "../shared.js";
-import { buildGroupData, compareStandingRows, matchSortAsc, ownerOf } from "./standings.js";
+import { buildGroupData, buildTeamStats, compareStandingRows, matchSortAsc, ownerOf } from "./standings.js";
 
 const GROUP_BONUS = {
   winner: 3,
@@ -98,6 +98,20 @@ export function buildBonusRows({ standings, live, played, upcoming, knockout }) 
       makeEmptyRow(person, standings.find(row => row.person === person) || { person, teams: PARTICIPANTS[person] || [], pts: 0, played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, td: 0 }),
     ])
   );
+
+  // Tordifferenz "Mit Bonus" zählt zusätzlich die K.o.-Phase (90 bzw. 120 Min.
+  // bei Verlängerung), aber kein Elfmeterschießen — homeGoals/awayGoals der
+  // API bilden bereits nur den Spielstand nach regulärer Zeit/Verlängerung ab.
+  const knockoutTeamStats = buildTeamStats(Array.isArray(knockout) ? knockout : []);
+  Object.entries(PARTICIPANTS).forEach(([person, teams]) => {
+    const row = rowsByPerson[person];
+    if (!row) return;
+    const koGf = teams.reduce((sum, team) => sum + (knockoutTeamStats[team]?.gf || 0), 0);
+    const koGa = teams.reduce((sum, team) => sum + (knockoutTeamStats[team]?.ga || 0), 0);
+    row.gf = (row.gf || 0) + koGf;
+    row.ga = (row.ga || 0) + koGa;
+    row.td = row.gf - row.ga;
+  });
 
   const groupData = buildGroupData(live, played, upcoming);
   const thirds = groupData
