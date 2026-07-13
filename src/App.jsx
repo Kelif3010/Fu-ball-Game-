@@ -170,6 +170,8 @@ function SubTabs({ activeTab, activeSubTab, onChange, liveCount }) {
 
 function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, officialMeta = null, prevRankSnapshot = null, onTeamClick = null, liveRankMap = null, allMatches = [], mutedTeams = null }) {
   const isMuted = team => Boolean(mutedTeams && mutedTeams.has(team));
+  // Ausgeschieden = alle eigenen Teams sind raus (K.o.-Verlierer bzw. Gruppen-Aus).
+  const isEliminated = Boolean(mutedTeams && row.teams.length > 0 && row.teams.every(isMuted));
   const progress = maxPts > 0 ? Math.max(row.pts === 0 ? 0 : 6, Math.round((row.pts / maxPts) * 100)) : 0;
   const hasBonus = Number.isFinite(row.bonusTotal);
   const currentRank = index + 1;
@@ -184,7 +186,7 @@ function StandingRow({ row, index, maxPts, open, onToggle, liveMode = false, off
   const displayDelta = (liveDelta !== null && liveDelta !== 0) ? liveDelta : sessionDelta;
   const sortedTeams = [...row.teams].sort((a, b) => (FIFA_RANKS[a] ?? 999) - (FIFA_RANKS[b] ?? 999));
   const placementClass = index === 0 ? "first" : index < 3 ? "podium" : "normal";
-  return <article className={`standing-row ${placementClass} ${open ? "open" : ""}`} style={{ "--accent": COLORS[row.person], "--progress": `${progress}%` }}>
+  return <article className={`standing-row ${placementClass} ${open ? "open" : ""} ${isEliminated ? "eliminated" : ""}`} style={{ "--accent": COLORS[row.person], "--progress": `${progress}%` }}>
     <button className="standing-main" onClick={onToggle}>
       <span className="rank-badge">{rankLabel(index)}</span>
       {displayDelta !== null && displayDelta !== 0 && <span className="rank-delta" style={{ color: displayDelta > 0 ? "#34d399" : "#f87171" }}>{displayDelta > 0 ? `▲${displayDelta}` : `▼${Math.abs(displayDelta)}`}</span>}
@@ -1372,7 +1374,16 @@ export default function App() {
 
   let screen = null;
   if (tab === "liga") {
-    const tableRows = leagueMode === "bonus" ? bonusRows : standings;
+    // Ausgeschiedene Spieler (alle eigenen Teams raus) rutschen im Bonus-Tab
+    // ans Ende – Array.sort ist stabil, daher bleibt die Punkte-Reihenfolge
+    // innerhalb der beiden Gruppen (noch dabei / ausgeschieden) erhalten.
+    const tableRows = leagueMode === "bonus"
+      ? [...bonusRows].sort((a, b) => {
+          const aOut = a.teams.length > 0 && a.teams.every(t => eliminatedTeams.has(t));
+          const bOut = b.teams.length > 0 && b.teams.every(t => eliminatedTeams.has(t));
+          return aOut === bOut ? 0 : aOut ? 1 : -1;
+        })
+      : standings;
     screen = <div className="card-stack">
       <LeagueModeToggle mode={leagueMode} onChange={setLeagueMode} />
       <StandingsPanel standings={tableRows} openPerson={openPerson} setOpenPerson={setOpenPerson} prevRankSnapshot={leagueMode === "normal" ? prevRankSnapshot : null} onTeamClick={setSelectedTeam} liveRankMap={leagueMode === "normal" ? liveRankMap : null} allMatches={[...played, ...live, ...upcoming]} mutedTeams={leagueMode === "bonus" ? eliminatedTeams : null} />

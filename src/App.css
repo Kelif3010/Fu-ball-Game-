@@ -333,6 +333,11 @@ body {
   background: rgba(255, 255, 255, 0.045);
 }
 
+.standing-row.eliminated {
+  opacity: 0.55;
+  filter: grayscale(0.7);
+}
+
 .standing-main {
   width: 100%;
   border: 0;
