@@ -205,7 +205,7 @@ export function buildBonusRows({ standings, live, played, upcoming, knockout }) 
         bonusDetails: [...row.bonusDetails].sort((a, b) => detailSortKey(a).localeCompare(detailSortKey(b))),
       };
     })
-    .sort((a, b) => b.totalPts - a.totalPts || b.normalPts - a.normalPts || compareStandingRows(a, b));
+    .sort((a, b) => b.totalPts - a.totalPts || compareStandingRows(a, b));
 }
 
 export const bonusRules = {
